@@ -1,8 +1,8 @@
-# `/api/route` **— openrouteservice 路線代理**
+## `/api/route` **— openrouteservice 路線代理**
 
 ## 此端點代理到 openrouteservice Directions（cycling-regular），回傳標準化 GeoJSON LineString，供前端 Leaflet 直接繪製。
 
-# 環境變數
+## 環境變數
 
 在專案根目錄建立 .env.local（本機）：
 
