@@ -78,9 +78,10 @@ export async function POST(req: NextRequest) {
       duration,
       bbox: f.bbox,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
-      { error: err?.message ?? "Unknown error", code: "INTERNAL_ERROR" },
+      { error: message, code: "INTERNAL_ERROR" },
       { status: 500 }
     );
   }
