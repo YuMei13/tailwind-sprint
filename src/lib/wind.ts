@@ -1,3 +1,4 @@
+// 風速 m/s → 顏色（綠/黃/橘/紅）
 export function windToColor(speedMS: number) {
     if (speedMS < 3) return "#22c55e";   // 綠
     if (speedMS < 6) return "#eab308";   // 黃
@@ -5,12 +6,21 @@ export function windToColor(speedMS: number) {
     return "#ef4444";                    // 紅
   }
   
-  // 氣象學風向：數值表示「風從哪裡吹來」（0=北風）
+  // 風向角度 → 羅盤方位
   export function degToCompass(deg: number) {
     const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
                   "S","SSW","SW","WSW","W","WNW","NW","NNW"];
     const ix = Math.round(((deg % 360) / 22.5)) % 16;
     return dirs[ix];
   }
+  
+  // 圖例等級（m/s）
+  export const WIND_BINS_MS = [
+    { max: 3,   color: "#22c55e", label: "0–3" },
+    { max: 6,   color: "#eab308", label: "3–6" },
+    { max: 10,  color: "#f97316", label: "6–10" },
+    { max: Infinity, color: "#ef4444", label: "≥10" },
+  ];
+  
   
   

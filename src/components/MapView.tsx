@@ -6,6 +6,9 @@ import { MapContainer, TileLayer, Polyline, Marker, Popup } from "react-leaflet"
 import { useEffect, useState } from "react";
 import { downsampleLonLat } from "@/lib/sampling";
 import { degToCompass, windToColor } from "@/lib/wind";
+import WindLegend from "@/components/WindLegend";
+import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWindLayer";
+
 
 // 修正 Leaflet 預設 marker 圖示在 Next 環境的載入
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -25,7 +28,8 @@ type OrsAPIResponse = {
   bbox?: [number, number, number, number];
 };
 
-type WindPoint = { lat: number; lon: number; speedKmh?: number; dirDeg?: number; error?: true; msg?: string };
+// type WindPoint = { lat: number; lon: number; speedKmh?: number; dirDeg?: number; error?: true; msg?: string };
+type WindPoint = WindPointType;
 type WindAPIResponse = { points?: WindPoint[] };
 
 export default function MapView() {
@@ -97,48 +101,56 @@ export default function MapView() {
   }, []);
 
   return (
-    <MapContainer center={[25.05, 121.52]} zoom={14} style={{ height: "100%", width: "100%" }}>
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+    <div style={{ position: "relative", height: "100%", width: "100%" }}>
+        <MapContainer center={[25.05, 121.52]} zoom={14} style={{ height: "100%", width: "100%" }}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-      {route.length > 0 && (
-        <Polyline positions={route} pathOptions={{ color: "blue", weight: 5 }} />
-      )}
+        {/* {route.length > 0 && (
+            <Polyline positions={route} pathOptions={{ color: "blue", weight: 5 }} />
+        )} */}
+        {route.length > 0 && (
+        <RouteWindLayer route={route} winds={winds} weight={6} />
+            )}
 
-      {winds.map((p, idx) => {
-        const pos: LatLng = [p.lat, p.lon];
-        const speedMS = typeof p.speedKmh === "number" ? p.speedKmh / 3.6 : undefined;
-        const color = typeof speedMS === "number" ? windToColor(speedMS) : "#6b7280";
-        const dir = typeof p.dirDeg === "number" ? degToCompass(p.dirDeg) : "—";
+        {winds.map((p, idx) => {
+            const pos: LatLng = [p.lat, p.lon];
+            const speedMS = typeof p.speedKmh === "number" ? p.speedKmh / 3.6 : undefined;
+            const color = typeof speedMS === "number" ? windToColor(speedMS) : "#6b7280";
+            const dir = typeof p.dirDeg === "number" ? degToCompass(p.dirDeg) : "—";
 
-        return (
-          <Marker position={pos} key={`${p.lat},${p.lon}-${idx}`}>
-            <Popup>
-              <div style={{ minWidth: 140 }}>
-                <div><strong>Wind</strong></div>
-                {p.error ? (
-                  <div>—</div>
-                ) : (
-                  <>
-                    <div>Speed: {speedMS?.toFixed(1) ?? "—"} m/s</div>
-                    <div>Dir: {dir}</div>
-                    <div
-                      style={{
-                        display: "inline-block",
-                        padding: "2px 6px",
-                        borderRadius: 6,
-                        background: color,
-                        color: "#fff",
-                      }}
-                    >
-                      intensity
-                    </div>
-                  </>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        );
-      })}
-    </MapContainer>
+            return (
+            <Marker position={pos} key={`${p.lat},${p.lon}-${idx}`}>
+                <Popup>
+                <div style={{ minWidth: 140 }}>
+                    <div><strong>Wind</strong></div>
+                    {p.error ? (
+                    <div>—</div>
+                    ) : (
+                    <>
+                        <div>Speed: {speedMS?.toFixed(1) ?? "—"} m/s</div>
+                        <div>Dir: {dir}</div>
+                        <div
+                        style={{
+                            display: "inline-block",
+                            padding: "2px 6px",
+                            borderRadius: 6,
+                            background: color,
+                            color: "#fff",
+                        }}
+                        >
+                        intensity
+                        </div>
+                    </>
+                    )}
+                </div>
+                </Popup>
+            </Marker>
+            );
+        })}
+        </MapContainer>
+        <div style={{ position: "absolute", right: 12, bottom: 12, zIndex: 1200 }}>
+        <WindLegend />
+        </div>
+    </div>
   );
 }
