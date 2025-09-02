@@ -20,7 +20,7 @@ type BodyByPoints = {
   dataset?: string;
 };
 
-type ElevReq = BodyByCoords | BodyByPoints;
+// type ElevReq = BodyByCoords | BodyByPoints;
 
 type ElevPoint = {
   lat: number;
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
     const parts: ElevPoint[][] = [];
     for (const b of batches) {
       // 串行較穩；若想更快可改 Promise.all（注意外部 API 限流）
-      // eslint-disable-next-line no-await-in-loop
+     
       parts.push(await fetchOpenTopoBatch(b, dataset));
     }
     const points = parts.flat();
