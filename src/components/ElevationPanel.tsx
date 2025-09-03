@@ -1,17 +1,31 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { haversine } from "@/lib/geo";
 
-type Pt = { lat: number; lon: number; elevation?: number; error?: true };
+export type ElevPt = { lat: number; lon: number; elevation?: number; error?: true };
 
-export default function ElevationPanel({ points }: { points: Pt[] }) {
-  // 只取有海拔的點做曲線
+type Props = {
+  points: ElevPt[];
+  onHover?: (pt: ElevPt | null, index: number | null) => void;
+  onLeave?: () => void;
+  onClick?: (pt: ElevPt | null, index: number | null) => void;
+};
+
+export default function ElevationPanel({ points, onHover, onLeave, onClick }: Props) {
+  // 1) 計算序列
   const series = useMemo(() => {
-    const ok = points.filter((p): p is { lat: number; lon: number; elevation: number } =>
-      typeof p.elevation === "number"
-    );
-    if (ok.length < 2) return { dist: [] as number[], elev: [] as number[], total: 0, min: 0, max: 0 };
-
+    const ok: { lat: number; lon: number; elevation: number }[] = [];
+    const mapIdx: number[] = [];
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      if (typeof p.elevation === "number") {
+        ok.push({ lat: p.lat, lon: p.lon, elevation: p.elevation });
+        mapIdx.push(i);
+      }
+    }
+    if (ok.length < 2) {
+      return { dist: [] as number[], elev: [] as number[], total: 0, min: 0, max: 0, ok, mapIdx };
+    }
     const dist: number[] = [0];
     for (let i = 1; i < ok.length; i++) {
       dist.push(dist[i - 1] + haversine([ok[i - 1].lon, ok[i - 1].lat], [ok[i].lon, ok[i].lat]));
@@ -20,33 +34,45 @@ export default function ElevationPanel({ points }: { points: Pt[] }) {
     const total = dist[dist.length - 1];
     const min = Math.min(...elev);
     const max = Math.max(...elev);
-    return { dist, elev, total, min, max };
+    return { dist, elev, total, min, max, ok, mapIdx };
   }, [points]);
 
+  // 2) 狀態（固定呼叫 Hooks）
   const [hoverX, setHoverX] = useState<number | null>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const lastSentIdxRef = useRef<number | null>(null); // 避免重複觸發 onHover
 
   const W = 520, H = 140, P = 28;
-  if (series.dist.length < 2) return null;
+  const ready = series.dist.length >= 2;
 
-  const x = (d: number) => P + (d / series.total) * (W - 2 * P);
+  const x = (d: number) => P + (d / Math.max(1, series.total)) * (W - 2 * P);
   const y = (z: number) => {
     const range = Math.max(1, series.max - series.min);
     return H - P - ((z - series.min) / range) * (H - 2 * P);
   };
 
-  // path
+  // 3) path（可為空）
   let pathD = "";
   for (let i = 0; i < series.dist.length; i++) {
     const cmd = i === 0 ? "M" : "L";
     pathD += `${cmd}${x(series.dist[i]).toFixed(1)},${y(series.elev[i]).toFixed(1)} `;
   }
 
-  // hover index（找最接近的距離點）
+  // 4) hover 距離（不 ready 就固定 null）
   const hoverDist =
-    hoverX != null ? ((hoverX - P) / Math.max(1, W - 2 * P)) * series.total : null;
+    hoverX != null && ready ? ((hoverX - P) / Math.max(1, W - 2 * P)) * series.total : null;
 
-  let hoverIdx: number | null = null;
-  if (hoverDist != null) {
+  // 5) 依 hoverDist 找最近點；只有真的變動才 setState / onHover
+  useEffect(() => {
+    if (!ready || hoverDist == null) {
+      if (hoverIdx !== null) setHoverIdx(null);
+      if (lastSentIdxRef.current !== null) {
+        lastSentIdxRef.current = null;
+        onHover?.(null, null);
+      }
+      return;
+    }
+
     let best = 0;
     let bestDiff = Number.POSITIVE_INFINITY;
     for (let i = 0; i < series.dist.length; i++) {
@@ -56,12 +82,25 @@ export default function ElevationPanel({ points }: { points: Pt[] }) {
         best = i;
       }
     }
-    hoverIdx = best;
-  }
+
+    // 僅在 index 改變時更新，避免無限循環
+    if (hoverIdx !== best) {
+      setHoverIdx(best);
+    }
+    if (lastSentIdxRef.current !== best) {
+      lastSentIdxRef.current = best;
+      const origIdx = series.mapIdx[best];
+      onHover?.(points[origIdx], origIdx);
+    }
+    // 只依賴 hoverDist / ready（其餘引用皆為穩定值或受上述條件保護）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoverDist, ready]);
 
   const km = (series.total / 1000).toFixed(2);
   const minStr = series.min.toFixed(0);
   const maxStr = series.max.toFixed(0);
+
+  if (!ready) return null;
 
   return (
     <div
@@ -73,13 +112,31 @@ export default function ElevationPanel({ points }: { points: Pt[] }) {
         fontSize: 12,
         lineHeight: 1.3,
       }}
+      onMouseLeave={() => {
+        setHoverX(null);
+        if (hoverIdx !== null) setHoverIdx(null);
+        lastSentIdxRef.current = null;
+        onLeave?.();
+      }}
     >
       <div style={{ fontWeight: 700, marginBottom: 6 }}>Elevation (m)</div>
       <svg
         width={W}
         height={H}
-        onMouseMove={(e) => setHoverX((e.nativeEvent as MouseEvent & { offsetX: number }).offsetX)}
-        onMouseLeave={() => setHoverX(null)}
+        onMouseMove={(e) => {
+          const xPos = (e.nativeEvent as unknown as MouseEvent & { offsetX: number }).offsetX;
+          // 只有數值真的不同才更新，避免過度 setState
+          setHoverX((prev) => (prev === xPos ? prev : xPos));
+        }}
+        onClick={() => {
+          if (hoverIdx == null) {
+            onClick?.(null, null);
+            return;
+          }
+          const origIdx = series.mapIdx[hoverIdx];
+          onClick?.(points[origIdx], origIdx);
+        }}
+        style={{ cursor: "pointer" }}
       >
         {/* Axes */}
         <line x1={P} y1={H - P} x2={W - P} y2={H - P} stroke="#cbd5e1" />
