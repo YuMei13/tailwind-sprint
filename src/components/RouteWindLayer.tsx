@@ -1,29 +1,38 @@
 "use client";
 import { Polyline } from "react-leaflet";
 import { windToColor } from "@/lib/wind";
-
-type LatLng = [number, number]; // [lat, lon]
+import { haversine } from "@/lib/geo";
 
 export type WindPoint = {
   lat: number;
   lon: number;
-  speedKmh?: number;
+  speedKmh?: number; // from /api/wind
   dirDeg?: number;
   error?: true;
   msg?: string;
 };
 
+type LatLng = [number, number]; // [lat, lon]
+
 type Props = {
-  route: LatLng[];          // 連續路線（[lat,lon]）
-  winds: WindPoint[];       // 抽樣點（[lat,lon] + 風）
-  weight?: number;          // 線寬
+  route: LatLng[];            // 連續路線（[lat,lon]）
+  winds: WindPoint[];         // 抽樣點（[lat,lon] + 風）
+  weight?: number;            // 線寬
+  segmentMeters?: number;     // 每段長度（預設 500m）
 };
 
-// 計算平方距離
-function d2(a: LatLng, b: LatLng) {
-  const dx = a[0] - b[0];
-  const dy = a[1] - b[1];
-  return dx * dx + dy * dy;
+const FALLBACK_COLOR = "#6b7280"; // 無資料時的灰色
+
+// 計算 route 的累積距離（公尺），route 是 [lat,lon]
+function cumulativeDistances(route: LatLng[]): number[] {
+  const n = route.length;
+  const cum: number[] = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const a: [number, number] = [route[i - 1][1], route[i - 1][0]]; // [lon,lat]
+    const b: [number, number] = [route[i][1], route[i][0]];         // [lon,lat]
+    cum[i] = cum[i - 1] + haversine(a, b);
+  }
+  return cum;
 }
 
 // 找 route 陣列中與點 p 最近的 index（O(n)；MVP 足夠）
@@ -31,57 +40,114 @@ function nearestIndex(route: LatLng[], p: LatLng): number {
   let best = 0;
   let bestD = Number.POSITIVE_INFINITY;
   for (let i = 0; i < route.length; i++) {
-    const dd = d2(route[i], p);
-    if (dd < bestD) {
-      bestD = dd;
+    const dx = route[i][0] - p[0];
+    const dy = route[i][1] - p[1];
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD) {
+      bestD = d2;
       best = i;
     }
   }
   return best;
 }
 
-export default function RouteWindLayer({ route, winds, weight = 6 }: Props) {
+// 沿著 polyline 取 [d0,d1]（公尺）之間的子段，必要時在邊界做線性內插
+function sliceBetween(route: LatLng[], cum: number[], d0: number, d1: number): LatLng[] {
+  const n = route.length;
+  if (n < 2 || d1 <= d0) return [];
+  const out: LatLng[] = [];
+  let started = false;
+
+  for (let i = 1; i < n; i++) {
+    const a = route[i - 1];
+    const b = route[i];
+    const da = cum[i - 1];
+    const db = cum[i];
+    const segLen = db - da;
+    if (segLen <= 0) continue;
+
+    // 跳過與區間完全無交集的段
+    if (db < d0) continue;
+    if (da > d1) break;
+
+    // 進入點
+    if (!started) {
+      if (d0 <= da) {
+        out.push(a);
+      } else {
+        const t0 = Math.min(1, Math.max(0, (d0 - da) / segLen));
+        out.push([a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0]);
+      }
+      started = true;
+    }
+
+    // 離開點：若本段跨過 d1，補上邊界點後結束
+    if (db >= d1) {
+      const t1 = Math.min(1, Math.max(0, (d1 - da) / segLen));
+      out.push([a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1]);
+      break;
+    } else {
+      // 否則可安全把 b 放進去
+      out.push(b);
+    }
+  }
+
+  // 確保至少兩點形成線段
+  return out.length >= 2 ? out : [];
+}
+
+export default function RouteWindLayer({
+  route,
+  winds,
+  weight = 6,
+  segmentMeters = 500,
+}: Props) {
   if (!Array.isArray(route) || route.length < 2) return null;
-  if (!Array.isArray(winds) || winds.length === 0) {
-    // 沒風資料就畫成單色藍線（回退）
-    return <Polyline positions={route} pathOptions={{ color: "#3b82f6", weight }} />;
+
+  // 1) 累積距離與總長
+  const cum = cumulativeDistances(route);
+  const total = cum[cum.length - 1];
+  if (!Number.isFinite(total) || total <= 0) {
+    return <Polyline positions={route} pathOptions={{ color: FALLBACK_COLOR, weight }} />;
   }
 
-  // 把每個風點對應到 route 的最近 index
-  const anchors = winds
-    .map((w) => ({
-      idx: nearestIndex(route, [w.lat, w.lon]),
-      speedMS: typeof w.speedKmh === "number" ? w.speedKmh / 3.6 : undefined,
-    }))
-    .sort((a, b) => a.idx - b.idx)
-    .filter((v, i, arr) => i === 0 || v.idx !== arr[i - 1].idx); // 去除重複 index
+  // 2) 建立段落（每 segmentMeters 一段）
+  const segLen = Math.max(50, segmentMeters); // 下限 50m 避免太碎
+  const segCount = Math.max(1, Math.ceil(total / segLen));
 
-  if (anchors.length === 0) {
-    return <Polyline positions={route} pathOptions={{ color: "#3b82f6", weight }} />;
+  // 3) 將風點對應到「距離座標」→ 落在哪一段
+  const buckets: number[][] = Array.from({ length: segCount }, () => []);
+  for (const w of winds) {
+    const sp = typeof w.speedKmh === "number" ? w.speedKmh / 3.6 : undefined; // m/s
+    if (!Number.isFinite(sp)) continue;
+    const idx = nearestIndex(route, [w.lat, w.lon]);
+    const d = cum[idx];
+    const k = Math.min(segCount - 1, Math.max(0, Math.floor(d / segLen)));
+    buckets[k].push(sp as number);
   }
 
-  // 以 anchors 把 route 切成多段
+  // 4) 計算每段平均風速（m/s）
+  const segAvg: Array<number | undefined> = buckets.map((arr) =>
+    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : undefined
+  );
+
+  // 5) 切出每段的 polyline，並用平均風速決定顏色
   const segments: { pts: LatLng[]; color: string }[] = [];
-  // 起始段（route[0..anchor0]）
-  {
-    const endIdx = anchors[0].idx;
-    const color = anchors[0].speedMS !== undefined ? windToColor(anchors[0].speedMS) : "#6b7280";
-    segments.push({ pts: route.slice(0, Math.max(1, endIdx + 1)), color });
+  for (let k = 0; k < segCount; k++) {
+    const d0 = k * segLen;
+    const d1 = Math.min(total, (k + 1) * segLen);
+    const pts = sliceBetween(route, cum, d0, d1);
+    if (pts.length < 2) continue;
+
+    const sp = segAvg[k];
+    const color = typeof sp === "number" ? windToColor(sp) : FALLBACK_COLOR;
+
+    segments.push({ pts, color });
   }
-  // 中間段（anchor i .. anchor i+1）
-  for (let i = 0; i < anchors.length - 1; i++) {
-    const a = anchors[i];
-    const b = anchors[i + 1];
-    const color = a.speedMS !== undefined ? windToColor(a.speedMS) : "#6b7280";
-    const seg = route.slice(a.idx, b.idx + 1);
-    if (seg.length >= 2) segments.push({ pts: seg, color });
-  }
-  // 最後一段（anchor last .. route end）
-  {
-    const last = anchors[anchors.length - 1];
-    const color = last.speedMS !== undefined ? windToColor(last.speedMS) : "#6b7280";
-    const seg = route.slice(last.idx);
-    if (seg.length >= 2) segments.push({ pts: seg, color });
+
+  // 若意外沒切出任何段，就回退單色
+  if (segments.length === 0) {
+    return <Polyline positions={route} pathOptions={{ color: FALLBACK_COLOR, weight }} />;
   }
 
   return (
