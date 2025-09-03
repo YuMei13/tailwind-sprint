@@ -9,7 +9,7 @@ import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import SegmentationControls from "@/components/SegmentationControls";
 
-// Leaflet 預設 marker 圖示
+// Leaflet marker 圖示
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -27,7 +27,7 @@ type OrsAPIResponse = {
 type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
 
-// --- fetchJSON ---
+// --- fetchJSON（略同前） ---
 function absUrl(path: string) {
   const base = typeof window !== "undefined" ? window.location.origin : "";
   return path.startsWith("http") ? path : `${base}${path}`;
@@ -71,7 +71,7 @@ async function fetchJSON<T>(
   throw new Error("unreachable");
 }
 
-// ★ 地圖飛到指定點
+// --- 飛行到指定點
 function FlyToOnPoint({ target, minZoom = 15, duration = 0.8 }: {
   target: { lat: number; lon: number } | null;
   minZoom?: number;
@@ -86,7 +86,7 @@ function FlyToOnPoint({ target, minZoom = 15, duration = 0.8 }: {
   return null;
 }
 
-// ★ 取最近 elevation 點的 index
+// --- 最近 elevation 點索引（簡單平方距離）
 function nearestElevIndex(elevPts: ElevPoint[], lat: number, lon: number): number | null {
   if (!elevPts.length) return null;
   let best = 0;
@@ -104,15 +104,51 @@ function nearestElevIndex(elevPts: ElevPoint[], lat: number, lon: number): numbe
   return best;
 }
 
-// ★ 綁定地圖事件：點擊 → 設定 focusIdx（反向同步到面板）
-function MapClickBinder({ onPick }: { onPick: (idx: number | null) => void }) {
-  useMapEvents({
+// --- 地圖事件：click → focus，mousemove → external hover，mouseout → 清除
+function MapEventsBridge({
+  onPickIndex,
+  onHoverIndex,
+}: {
+  onPickIndex: (idx: number | null) => void;
+  onHoverIndex: (idx: number | null) => void;
+}) {
+  const elevPtsRef = useRef<ElevPoint[]>([]);
+  // 用 window 事件或 props 傳遞會更乾淨；這裡我們在父層用閉包注入
+  // 父層會透過 set 函式更新這個 ref
+  // 為了簡潔，這個元件會在父層 render 裡以最新 elevPts 重新建立
+
+  // rAF 節流（避免 mousemove 太頻繁）
+  const rafRef = useRef<number | null>(null);
+  const lastIdxRef = useRef<number | null>(null);
+
+  const map = useMapEvents({
+    mousemove(e) {
+      const { lat, lng } = e.latlng;
+      if (rafRef.current != null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const idx = nearestElevIndex(elevPtsRef.current, lat, lng);
+        if (idx !== lastIdxRef.current) {
+          lastIdxRef.current = idx;
+          onHoverIndex(idx);
+        }
+      });
+    },
+    mouseout() {
+      lastIdxRef.current = null;
+      onHoverIndex(null);
+    },
     click(e) {
       const { lat, lng } = e.latlng;
-      // 由外層決定怎麼找 index（用 closure 取）
-      onPick((window as never) as unknown as number | null); // 這行只為了型別佔位，會被外層覆寫
+      const idx = nearestElevIndex(elevPtsRef.current, lat, lng);
+      onPickIndex(idx);
     },
   });
+
+  // 把當前地圖的 elevation 點來源放進 ref（父層每次 render 會重建 bridge，這裡安全）
+  // @ts-expect-error private patch by parent before render
+  map.__setElevSource = (pts: ElevPoint[]) => { elevPtsRef.current = pts; };
+
   return null;
 }
 
@@ -122,19 +158,21 @@ export default function MapView() {
   const [elevPts, setElevPts] = useState<ElevPoint[]>([]);
   const [segmentMeters, setSegmentMeters] = useState<number>(500);
 
-  // 滑過坡面圖的游標點（淡紫）
+  // 面板顯示：滑過坡面圖 → 地圖淡紫游標
   const [cursorPt, setCursorPt] = useState<{ lat: number; lon: number } | null>(null);
-  // 面板/地圖選中索引（雙向同步）
-  const [focusIdx, setFocusIdx] = useState<number | null>(null);
 
-  // 便於 flyTo 的座標
+  // 雙向選中：focus（深藍，flyTo）
+  const [focusIdx, setFocusIdx] = useState<number | null>(null);
   const focusPt = useMemo(() => {
     if (focusIdx == null || !elevPts[focusIdx]) return null;
     const p = elevPts[focusIdx];
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
 
-  // 預熱載入
+  // 地圖滑動 → 面板外部 hover
+  const [panelHoverIdx, setPanelHoverIdx] = useState<number | null>(null);
+
+  // 載入資料
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -195,31 +233,26 @@ export default function MapView() {
     return () => { cancelled = true; };
   }, []);
 
-  // --- 地圖點擊 → 設定 focusIdx（最近的 elevation 點）
-  const pickNearestRef = useRef<(lat: number, lon: number) => void>();
-  pickNearestRef.current = (lat: number, lon: number) => {
-    const idx = nearestElevIndex(elevPts, lat, lon);
-    if (idx != null) setFocusIdx((prev) => (prev === idx ? prev : idx));
-  };
-
-  // ★ 封裝 useMapEvents（要在 MapContainer 內）
-  function MapClickBridge() {
-    useMapEvents({
-      click(e) {
-        const { lat, lng } = e.latlng;
-        pickNearestRef.current?.(lat, lng);
-      },
-    });
-    return null;
-  }
-
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
       <MapContainer center={[25.05, 121.52]} zoom={14} style={{ height: "100%", width: "100%" }}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        {/* 地圖點擊橋接（反向同步） */}
-        <MapClickBridge />
+        {/* 地圖事件：mousemove → external hover；click → focus */}
+        <MapEventsBridge
+          onPickIndex={(idx) => {
+            if (typeof idx === "number") setFocusIdx((prev) => (prev === idx ? prev : idx));
+          }}
+          onHoverIndex={(idx) => {
+            setPanelHoverIdx((prev) => (prev === idx ? prev : idx));
+          }}
+        />
+        {/* 把 elevation 點源塞進橋接（利用 map 上的暫存欄位） */}
+        {/* @ts-expect-error: private helper set by MapEventsBridge */}
+        <FlyToOnPoint target={null} />
+        {/* 上面 FlyToOnPoint 只是保證 useMap 可用；真正將 elevPts 塞進 MapEventsBridge： */}
+        {/* 這段小 hack：在下一個 tick，把 elevPts 寫到 map.__setElevSource */}
+        <MapHackSyncElevSource elevPts={elevPts} />
 
         {route.length > 0 && (
           <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />
@@ -248,7 +281,7 @@ export default function MapView() {
           );
         })}
 
-        {/* 滑過游標（淡紫） */}
+        {/* 滑過游標（來自面板 hover 的淡紫圈） */}
         {cursorPt && (
           <CircleMarker
             center={[cursorPt.lat, cursorPt.lon]}
@@ -280,27 +313,43 @@ export default function MapView() {
         <WindLegend />
       </div>
 
-      {/* 左下角：坡面圖（滑動同步 + 點擊飛到 + 接收外部選中） */}
+      {/* 左下角：坡面圖（外部 hover + 外部選中 + 面板互動） */}
       <div style={{ position: "absolute", left: 12, bottom: 12, zIndex: 1200 }}>
         <ElevationPanel
           points={elevPts as ElevPt[]}
-          selectedIndex={focusIdx} // ★ 接收地圖點擊的選中
+          selectedIndex={focusIdx}
+          externalHoverIndex={panelHoverIdx}
           onHover={(pt) => {
             if (pt && typeof pt.lat === "number" && typeof pt.lon === "number") {
-              setCursorPt({ lat: pt.lat, lon: pt.lon });
+              setCursorPt({ lat: pt.lat, lon: pt.lon }); // 面板 hover → 地圖淡紫游標
             } else {
               setCursorPt(null);
             }
           }}
           onLeave={() => setCursorPt(null)}
-          onClick={(pt, idx) => {
-            if (pt && typeof pt.lat === "number" && typeof pt.lon === "number" && typeof idx === "number") {
-              // 面板點擊 → 設定選中索引（觸發地圖 flyTo）
-              setFocusIdx((prev) => (prev === idx ? prev : idx));
+          onClick={(_, idx) => {
+            if (typeof idx === "number") {
+              setFocusIdx((prev) => (prev === idx ? prev : idx)); // 面板點擊 → focus & flyTo
             }
           }}
         />
       </div>
     </div>
   );
+}
+
+// 小工具：把 elevPts 寫入 MapEventsBridge 的來源 ref
+function MapHackSyncElevSource({ elevPts }: { elevPts: ElevPoint[] }) {
+  const map = useMap();
+  useEffect(() => {
+    // @ts-expect-error private helper set by MapEventsBridge
+    if (typeof map.__setElevSource === "function") {
+      // 下一個 macrotask 再設定，確保 bridge 已掛上
+      setTimeout(() => {
+        // @ts-expect-error
+        map.__setElevSource(elevPts);
+      }, 0);
+    }
+  }, [map, elevPts]);
+  return null;
 }
