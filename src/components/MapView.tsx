@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWindLayer";
 import WindLegend from "@/components/WindLegend";
 import ElevationPanel from "@/components/ElevationPanel";
+import SegmentationControls from "@/components/SegmentationControls";
 
 // 修正 Leaflet 預設 marker 圖示在 Next 環境的載入
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -82,6 +83,7 @@ export default function MapView() {
   const [route, setRoute] = useState<LineLatLng>([]);
   const [winds, setWinds] = useState<WindPoint[]>([]);
   const [elevPts, setElevPts] = useState<ElevPoint[]>([]);
+  const [segmentMeters, setSegmentMeters] = useState<number>(500);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,10 +167,13 @@ export default function MapView() {
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
+      <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1200 }}>
+      <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
+      </div>
       <MapContainer center={[25.05, 121.52]} zoom={14} style={{ height: "100%", width: "100%" }}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        {route.length > 0 && <RouteWindLayer route={route} winds={winds} weight={6} />}
+        {route.length > 0 && <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />}
 
         {/* Marker / Popup 顯示風資訊（可保留做觀察） */}
         {winds.map((p, idx) => {
