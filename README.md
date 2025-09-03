@@ -1,4 +1,15 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# tailwind-sprint
+
+A project to visualise bike route with wind speed, direction and elevation panel.
+
+👉 Documentation [docs/](./docs)：
+
+- [API 說明](./docs/api.md)
+- [部署指南](./docs/deploy.md)
+- [開發規範](./docs/dev.md)
+
+
+#### This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
 
