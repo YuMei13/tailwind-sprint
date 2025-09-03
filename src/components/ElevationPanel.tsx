@@ -9,9 +9,10 @@ type Props = {
   onHover?: (pt: ElevPt | null, index: number | null) => void;
   onLeave?: () => void;
   onClick?: (pt: ElevPt | null, index: number | null) => void;
+  selectedIndex?: number | null; // ★ 外部選中點（地圖點擊時帶入）
 };
 
-export default function ElevationPanel({ points, onHover, onLeave, onClick }: Props) {
+export default function ElevationPanel({ points, onHover, onLeave, onClick, selectedIndex = null }: Props) {
   // 1) 計算序列
   const series = useMemo(() => {
     const ok: { lat: number; lon: number; elevation: number }[] = [];
@@ -40,9 +41,9 @@ export default function ElevationPanel({ points, onHover, onLeave, onClick }: Pr
   // 2) 狀態（固定呼叫 Hooks）
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-  const lastSentIdxRef = useRef<number | null>(null); // 避免重複觸發 onHover
+  const lastSentIdxRef = useRef<number | null>(null);
 
-  const W = 520, H = 140, P = 28;
+  const W = 520, H = 160, P = 28;
   const ready = series.dist.length >= 2;
 
   const x = (d: number) => P + (d / Math.max(1, series.total)) * (W - 2 * P);
@@ -51,18 +52,18 @@ export default function ElevationPanel({ points, onHover, onLeave, onClick }: Pr
     return H - P - ((z - series.min) / range) * (H - 2 * P);
   };
 
-  // 3) path（可為空）
+  // path（可為空）
   let pathD = "";
   for (let i = 0; i < series.dist.length; i++) {
     const cmd = i === 0 ? "M" : "L";
     pathD += `${cmd}${x(series.dist[i]).toFixed(1)},${y(series.elev[i]).toFixed(1)} `;
   }
 
-  // 4) hover 距離（不 ready 就固定 null）
+  // 3) hover 距離（不 ready 就固定 null）
   const hoverDist =
     hoverX != null && ready ? ((hoverX - P) / Math.max(1, W - 2 * P)) * series.total : null;
 
-  // 5) 依 hoverDist 找最近點；只有真的變動才 setState / onHover
+  // 4) 依 hoverDist 找最近點；只有真的變動才 setState / onHover
   useEffect(() => {
     if (!ready || hoverDist == null) {
       if (hoverIdx !== null) setHoverIdx(null);
@@ -72,7 +73,6 @@ export default function ElevationPanel({ points, onHover, onLeave, onClick }: Pr
       }
       return;
     }
-
     let best = 0;
     let bestDiff = Number.POSITIVE_INFINITY;
     for (let i = 0; i < series.dist.length; i++) {
@@ -82,19 +82,22 @@ export default function ElevationPanel({ points, onHover, onLeave, onClick }: Pr
         best = i;
       }
     }
-
-    // 僅在 index 改變時更新，避免無限循環
-    if (hoverIdx !== best) {
-      setHoverIdx(best);
-    }
+    if (hoverIdx !== best) setHoverIdx(best);
     if (lastSentIdxRef.current !== best) {
       lastSentIdxRef.current = best;
       const origIdx = series.mapIdx[best];
       onHover?.(points[origIdx], origIdx);
     }
-    // 只依賴 hoverDist / ready（其餘引用皆為穩定值或受上述條件保護）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hoverDist, ready]);
+
+  // 5) 外部選中（selectedIndex）高亮：不影響 hover，僅加上第二條指示線
+  const selectedInnerIdx = useMemo(() => {
+    if (!ready || selectedIndex == null) return null;
+    // 把外部原索引映射到本面板濾後資料的內部索引
+    const i = series.mapIdx.findIndex((orig) => orig === selectedIndex);
+    return i >= 0 ? i : null;
+  }, [ready, selectedIndex, series.mapIdx]);
 
   const km = (series.total / 1000).toFixed(2);
   const minStr = series.min.toFixed(0);
@@ -125,8 +128,7 @@ export default function ElevationPanel({ points, onHover, onLeave, onClick }: Pr
         height={H}
         onMouseMove={(e) => {
           const xPos = (e.nativeEvent as unknown as MouseEvent & { offsetX: number }).offsetX;
-          // 只有數值真的不同才更新，避免過度 setState
-          setHoverX((prev) => (prev === xPos ? prev : xPos));
+          setHoverX((prev) => (prev === xPos ? prev : xPos)); // 去重
         }}
         onClick={() => {
           if (hoverIdx == null) {
@@ -141,11 +143,34 @@ export default function ElevationPanel({ points, onHover, onLeave, onClick }: Pr
         {/* Axes */}
         <line x1={P} y1={H - P} x2={W - P} y2={H - P} stroke="#cbd5e1" />
         <line x1={P} y1={P} x2={P} y2={H - P} stroke="#cbd5e1" />
+
         {/* Area */}
         <path d={`${pathD} L ${W - P},${H - P} L ${P},${H - P} Z`} fill="#93c5fd" opacity={0.35} />
+
         {/* Line */}
         <path d={pathD} fill="none" stroke="#3b82f6" strokeWidth={2} />
-        {/* Hover */}
+
+        {/* 外部選中（深藍） */}
+        {selectedInnerIdx != null && (
+          <>
+            <line
+              x1={x(series.dist[selectedInnerIdx])}
+              y1={P}
+              x2={x(series.dist[selectedInnerIdx])}
+              y2={H - P}
+              stroke="#1d4ed8"
+              strokeDasharray="6 4"
+            />
+            <circle
+              cx={x(series.dist[selectedInnerIdx])}
+              cy={y(series.elev[selectedInnerIdx])}
+              r={3.5}
+              fill="#2563eb"
+            />
+          </>
+        )}
+
+        {/* Hover（紫） */}
         {hoverIdx != null && (
           <>
             <line
@@ -156,15 +181,11 @@ export default function ElevationPanel({ points, onHover, onLeave, onClick }: Pr
               stroke="#6366f1"
               strokeDasharray="4 3"
             />
-            <circle
-              cx={x(series.dist[hoverIdx])}
-              cy={y(series.elev[hoverIdx])}
-              r={3}
-              fill="#1d4ed8"
-            />
+            <circle cx={x(series.dist[hoverIdx])} cy={y(series.elev[hoverIdx])} r={3} fill="#1d4ed8" />
           </>
         )}
       </svg>
+
       <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
         <span>Min: {minStr} m</span>
         <span>Max: {maxStr} m</span>
