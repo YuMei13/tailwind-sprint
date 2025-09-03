@@ -8,8 +8,9 @@ import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWi
 import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import SegmentationControls from "@/components/SegmentationControls";
+// import GeocodeSearch from "@/components/GeocodeSearch";
 
-// Leaflet marker 圖示
+// Leaflet 預設 marker 圖示
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -27,7 +28,7 @@ type OrsAPIResponse = {
 type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
 
-// --- fetchJSON（略同前） ---
+// --- fetchJSON ---
 function absUrl(path: string) {
   const base = typeof window !== "undefined" ? window.location.origin : "";
   return path.startsWith("http") ? path : `${base}${path}`;
@@ -51,9 +52,7 @@ async function fetchJSON<T>(
       }
       return (await res.json()) as T;
     } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error("Timeout");
-      }
+      if (err instanceof DOMException && err.name === "AbortError") throw new Error("Timeout");
       if (err instanceof Error) throw err;
       throw new Error("Unknown fetch error");
     } finally {
@@ -71,8 +70,8 @@ async function fetchJSON<T>(
   throw new Error("unreachable");
 }
 
-// --- 飛行到指定點
-function FlyToOnPoint({ target, minZoom = 15, duration = 0.8 }: {
+// --- 飛到指定點
+function FlyToOnPoint({ target, minZoom = 14, duration = 0.8 }: {
   target: { lat: number; lon: number } | null;
   minZoom?: number;
   duration?: number;
@@ -86,7 +85,7 @@ function FlyToOnPoint({ target, minZoom = 15, duration = 0.8 }: {
   return null;
 }
 
-// --- 最近 elevation 點索引（簡單平方距離）
+// --- 最近 elevation 點索引
 function nearestElevIndex(elevPts: ElevPoint[], lat: number, lon: number): number | null {
   if (!elevPts.length) return null;
   let best = 0;
@@ -108,26 +107,22 @@ function nearestElevIndex(elevPts: ElevPoint[], lat: number, lon: number): numbe
 function MapEventsBridge({
   onPickIndex,
   onHoverIndex,
+  elevPts,
 }: {
   onPickIndex: (idx: number | null) => void;
   onHoverIndex: (idx: number | null) => void;
+  elevPts: ElevPoint[];
 }) {
-  const elevPtsRef = useRef<ElevPoint[]>([]);
-  // 用 window 事件或 props 傳遞會更乾淨；這裡我們在父層用閉包注入
-  // 父層會透過 set 函式更新這個 ref
-  // 為了簡潔，這個元件會在父層 render 裡以最新 elevPts 重新建立
-
-  // rAF 節流（避免 mousemove 太頻繁）
   const rafRef = useRef<number | null>(null);
   const lastIdxRef = useRef<number | null>(null);
 
-  const map = useMapEvents({
+  useMapEvents({
     mousemove(e) {
       const { lat, lng } = e.latlng;
       if (rafRef.current != null) return;
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
-        const idx = nearestElevIndex(elevPtsRef.current, lat, lng);
+        const idx = nearestElevIndex(elevPts, lat, lng);
         if (idx !== lastIdxRef.current) {
           lastIdxRef.current = idx;
           onHoverIndex(idx);
@@ -140,58 +135,65 @@ function MapEventsBridge({
     },
     click(e) {
       const { lat, lng } = e.latlng;
-      const idx = nearestElevIndex(elevPtsRef.current, lat, lng);
+      const idx = nearestElevIndex(elevPts, lat, lng);
       onPickIndex(idx);
     },
   });
-
-  // 把當前地圖的 elevation 點來源放進 ref（父層每次 render 會重建 bridge，這裡安全）
-  // @ts-expect-error private patch by parent before render
-  map.__setElevSource = (pts: ElevPoint[]) => { elevPtsRef.current = pts; };
 
   return null;
 }
 
 export default function MapView() {
+  // === 狀態 ===
   const [route, setRoute] = useState<LineLatLng>([]);
   const [winds, setWinds] = useState<WindPoint[]>([]);
   const [elevPts, setElevPts] = useState<ElevPoint[]>([]);
   const [segmentMeters, setSegmentMeters] = useState<number>(500);
 
-  // 面板顯示：滑過坡面圖 → 地圖淡紫游標
-  const [cursorPt, setCursorPt] = useState<{ lat: number; lon: number } | null>(null);
+  // 查詢框 → 選擇的起訖點（[lon,lat]）
+  // const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
+  const [startLonLat] = useState<[number, number] | null>(null);
+  // const [endLonLat, setEndLonLat] = useState<[number, number] | null>(null);
+  const [endLonLat] = useState<[number, number] | null>(null);
 
-  // 雙向選中：focus（深藍，flyTo）
+  // 面板互動（游標、選中）
+  const [cursorPt, setCursorPt] = useState<{ lat: number; lon: number } | null>(null);
   const [focusIdx, setFocusIdx] = useState<number | null>(null);
+  const [panelHoverIdx, setPanelHoverIdx] = useState<number | null>(null);
+
   const focusPt = useMemo(() => {
     if (focusIdx == null || !elevPts[focusIdx]) return null;
     const p = elevPts[focusIdx];
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
 
-  // 地圖滑動 → 面板外部 hover
-  const [panelHoverIdx, setPanelHoverIdx] = useState<number | null>(null);
-
-  // 載入資料
+  // === 載入或重新規劃路線 ===
   useEffect(() => {
     let cancelled = false;
-    const run = async () => {
+
+    async function planAndFetch() {
       try {
-        // 1) Route
+        // 1) 若未選擇，就給一組預設（台北車站→大稻埕）
+        const start = startLonLat ?? ([121.517, 25.047] as [number, number]);
+        const end = endLonLat ?? ([121.510, 25.057] as [number, number]);
+
+        // 2) route
         const routeData = await fetchJSON<OrsAPIResponse>("/api/route", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ start: [121.517, 25.047], end: [121.510, 25.057] }),
+          body: JSON.stringify({ start, end }),
           timeoutMs: 45000,
         });
         if (cancelled) return;
+
         const coords = routeData?.geometry?.coordinates;
         if (!Array.isArray(coords) || coords.length < 2) return;
+
         const line: LineLatLng = coords.map(([lon, lat]) => [lat, lon]);
         setRoute(line);
 
-        // 2) 風（約 40 點）
-        const sample: LatLng[] = [];
+        // 3) 風（約 40 點）
+        const sample: [number, number][] = [];
         const step = Math.max(1, Math.floor(coords.length / 40));
         for (let i = 0; i < coords.length; i += step) {
           const [lon, lat] = coords[i];
@@ -213,7 +215,7 @@ export default function MapView() {
           if (!cancelled) setWinds([]);
         }
 
-        // 3) 海拔（距離抽樣 ~300m）
+        // 4) elevation（距離抽樣 ~300m）
         try {
           const elevData = await fetchJSON<{ points: ElevPoint[] }>("/api/elevation", {
             method: "POST",
@@ -225,13 +227,21 @@ export default function MapView() {
         } catch {
           if (!cancelled) setElevPts([]);
         }
+
+        // 規劃完成後，清掉舊的游標/選中狀態
+        setCursorPt(null);
+        setFocusIdx(null);
+        setPanelHoverIdx(null);
       } catch (e) {
-        console.warn("MapView init error:", e);
+        console.warn("Plan route failed:", e);
       }
+    }
+
+    planAndFetch();
+    return () => {
+      cancelled = true;
     };
-    run();
-    return () => { cancelled = true; };
-  }, []);
+  }, [startLonLat, endLonLat]);
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
@@ -240,6 +250,7 @@ export default function MapView() {
 
         {/* 地圖事件：mousemove → external hover；click → focus */}
         <MapEventsBridge
+          elevPts={elevPts}
           onPickIndex={(idx) => {
             if (typeof idx === "number") setFocusIdx((prev) => (prev === idx ? prev : idx));
           }}
@@ -247,13 +258,8 @@ export default function MapView() {
             setPanelHoverIdx((prev) => (prev === idx ? prev : idx));
           }}
         />
-        {/* 把 elevation 點源塞進橋接（利用 map 上的暫存欄位） */}
-        {/* @ts-expect-error: private helper set by MapEventsBridge */}
-        <FlyToOnPoint target={null} />
-        {/* 上面 FlyToOnPoint 只是保證 useMap 可用；真正將 elevPts 塞進 MapEventsBridge： */}
-        {/* 這段小 hack：在下一個 tick，把 elevPts 寫到 map.__setElevSource */}
-        <MapHackSyncElevSource elevPts={elevPts} />
 
+        {/* 分段上色的路線 */}
         {route.length > 0 && (
           <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />
         )}
@@ -281,7 +287,7 @@ export default function MapView() {
           );
         })}
 
-        {/* 滑過游標（來自面板 hover 的淡紫圈） */}
+        {/* 面板 hover → 地圖淡紫游標 */}
         {cursorPt && (
           <CircleMarker
             center={[cursorPt.lat, cursorPt.lon]}
@@ -290,7 +296,7 @@ export default function MapView() {
           />
         )}
 
-        {/* 點擊/選中（藍色） */}
+        {/* 點擊/選中（地圖或面板）→ 藍色圈 */}
         {focusPt && (
           <CircleMarker
             center={[focusPt.lat, focusPt.lon]}
@@ -299,13 +305,23 @@ export default function MapView() {
           />
         )}
 
-        {/* 導航到選中點 */}
-        <FlyToOnPoint target={focusPt} minZoom={15} duration={0.8} />
+        {/* 飛到選中點 */}
+        <FlyToOnPoint target={focusPt} minZoom={14} duration={0.8} />
       </MapContainer>
 
       {/* 右上角：分段長度切換 */}
       <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1200 }}>
         <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
+      </div>
+
+      {/* 左上角：查詢框（起訖點 → 規劃路線） */}
+      <div style={{ position: "absolute", left: 12, top: 12, zIndex: 1200 }}>
+        {/* <GeocodeSearch
+          onApply={(s, e) => {
+            setStartLonLat(s);
+            setEndLonLat(e);
+          }}
+        /> */}
       </div>
 
       {/* 右下角：風速圖例 */}
@@ -321,35 +337,17 @@ export default function MapView() {
           externalHoverIndex={panelHoverIdx}
           onHover={(pt) => {
             if (pt && typeof pt.lat === "number" && typeof pt.lon === "number") {
-              setCursorPt({ lat: pt.lat, lon: pt.lon }); // 面板 hover → 地圖淡紫游標
+              setCursorPt({ lat: pt.lat, lon: pt.lon });
             } else {
               setCursorPt(null);
             }
           }}
           onLeave={() => setCursorPt(null)}
           onClick={(_, idx) => {
-            if (typeof idx === "number") {
-              setFocusIdx((prev) => (prev === idx ? prev : idx)); // 面板點擊 → focus & flyTo
-            }
+            if (typeof idx === "number") setFocusIdx((prev) => (prev === idx ? prev : idx));
           }}
         />
       </div>
     </div>
   );
-}
-
-// 小工具：把 elevPts 寫入 MapEventsBridge 的來源 ref
-function MapHackSyncElevSource({ elevPts }: { elevPts: ElevPoint[] }) {
-  const map = useMap();
-  useEffect(() => {
-    // @ts-expect-error private helper set by MapEventsBridge
-    if (typeof map.__setElevSource === "function") {
-      // 下一個 macrotask 再設定，確保 bridge 已掛上
-      setTimeout(() => {
-        // @ts-expect-error
-        map.__setElevSource(elevPts);
-      }, 0);
-    }
-  }, [map, elevPts]);
-  return null;
 }
