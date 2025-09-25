@@ -294,7 +294,7 @@ export default function MapView() {
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         {webcams.map((w, i) => (
           <CircleMarker
-            key={`cam-${w.id || i}-${w.lat.toFixed(5)}-${w.lon.toFixed(5)}`} // ← 唯一 key
+            key={`cam-${w.id || i}-${w.lat.toFixed(5)}-${w.lon.toFixed(5)}`}
             center={[w.lat, w.lon]}
             radius={5}
             pathOptions={{ color: "#64748b", weight: 2, fillColor: "#94a3b8", fillOpacity: 0.9 }}
@@ -302,26 +302,24 @@ export default function MapView() {
             <Popup>
               <div style={{ minWidth: 160 }}>
                 <div style={{ fontWeight: 600 }}>{w.title || "Webcam"}</div>
-                <div style={{ color: "#6b7280", fontSize: 12 }}>{w.city || w.region || w.country || "—"}</div>
-                <div style={{ color: "#64748b", fontSize: 11, marginTop: 4 }}>{(w.distance / 1000).toFixed(1)} km away</div>
+                <div style={{ color: "#6b7280", fontSize: 12 }}>
+                  {w.city || w.region || w.country || "—"}
+                </div>
+                <div style={{ color: "#64748b", fontSize: 11, marginTop: 4 }}>
+                  {(w.distance / 1000).toFixed(1)} km away
+                </div>
                 <div style={{ marginTop: 6 }}>
-                  <a href={w.detailUrl} target="_blank" rel="noreferrer">View on Windy</a>
+                  <a href={w.detailUrl} target="_blank" rel="noreferrer">
+                    View on Windy
+                  </a>
                 </div>
               </div>
             </Popup>
           </CircleMarker>
         ))}
 
-        {webcams.map((w, i) => (
-          <CircleMarker
-            key={`${w.lat},${w.lon}-${i}`}
-            center={[w.lat, w.lon]}
-            radius={5}
-            pathOptions={{ color: "#64748b", weight: 2, fillColor: "#94a3b8", fillOpacity: 0.9 }}
-          >
-            <Popup>{w.title || "Webcam"}</Popup>
-          </CircleMarker>
-        ))}
+
+ 
         {/* 地圖事件：mousemove → external hover；click → focus */}
         <MapEventsBridge
           elevPts={elevPts}
