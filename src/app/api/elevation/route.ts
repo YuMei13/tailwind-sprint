@@ -1,4 +1,7 @@
-// src/app/api/elevation/route.ts
+// 強制不要做靜態生成，且使用 Node runtime（避免 Edge 限制）
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { buildKey, cacheFetchJSON } from "@/lib/cache";
 
@@ -74,8 +77,7 @@ export async function POST(req: NextRequest) {
           try {
             const part = await fetchElevBatch(chunk, dataset, 20000);
             out.push(...part);
-          } catch (e) {
-            // 批次失敗則標記錯誤
+          } catch {
             for (const [lon, lat] of chunk) out.push({ lat, lon, error: true as const, msg: "elev fetch failed" });
           }
         }
