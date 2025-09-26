@@ -8,6 +8,8 @@ import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWi
 import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import SegmentationControls from "@/components/SegmentationControls";
+import WebcamsPanel, { WebcamItem } from "@/components/WebcamsPanel";
+
 // import GeocodeSearch from "@/components/GeocodeSearch";
 
 // Leaflet 預設 marker 圖示
@@ -143,12 +145,41 @@ function MapEventsBridge({
   return null;
 }
 
+function MapCenterTracker({ onChange }: { onChange: (c: { lat: number; lon: number }) => void }) {
+  const map = useMapEvents({
+    moveend() {
+      const c = map.getCenter();
+      onChange({ lat: c.lat, lon: c.lng });
+    },
+  });
+  return null;
+}
+
+
 export default function MapView() {
   // === 狀態 ===
   const [route, setRoute] = useState<LineLatLng>([]);
   const [winds, setWinds] = useState<WindPoint[]>([]);
   const [elevPts, setElevPts] = useState<ElevPoint[]>([]);
   const [segmentMeters, setSegmentMeters] = useState<number>(500);
+  // const [webcams, setWebcams] = useState<Array<{ lat: number; lon: number; title: string }>>([]);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 25.05, lon: 121.52 });
+  const [webcamFlyTarget, setWebcamFlyTarget] = useState<{ lat: number; lon: number } | null>(null);
+  const [webcams, setWebcams] = useState<WebcamItem[]>([]); // ← 接住側欄載到的清單，用來畫 marker
+
+  useEffect(() => {
+  if (route.length >= 2) {
+    const mid = route[Math.floor(route.length / 2)];
+    setMapCenter({ lat: mid[0], lon: mid[1] });
+  }
+  }, [route]);
+  
+  // const handleWebcamPick = (lat: number, lon: number) => {
+  // // 選到某個 webcam → 不影響坡面圖 focus
+  // setFocusIdx(null);
+  // // 讓 FlyToOnPoint 負責飛行
+  // setWebcamFlyTarget({ lat, lon });
+  // };
 
   // 查詢框 → 選擇的起訖點（[lon,lat]）
   // const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
@@ -245,9 +276,54 @@ export default function MapView() {
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
-      <MapContainer center={[25.05, 121.52]} zoom={14} style={{ height: "100%", width: "100%" }}>
+      <div style={{ position: "absolute", left: 12, top: 12, zIndex: 1300 }}>
+        <WebcamsPanel
+          center={mapCenter}
+          onPick={(lat, lon) => {
+            // 在面板點 FlyTo → 地圖飛去；同時在地圖上高亮
+            setFocusIdx(null); // 不影響坡面圖 focus
+            // 直接用 Leaflet 控制：交由 FlyToOnPoint
+            // 我們另外用一個 state 來驅動飛行（避免覆用 elevation 的 focus）
+            setWebcamFlyTarget({ lat, lon });
+          }}
+          onLoaded={setWebcams}
+        />
+      </div>
+      <MapContainer
+        center={[mapCenter.lat, mapCenter.lon]}
+        zoom={13}
+        style={{ height: "100%", width: "100%" }}
+      >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <MapCenterTracker onChange={setMapCenter} />
+        {webcams.map((w, i) => (
+          <CircleMarker
+            key={`cam-${w.id || i}-${w.lat.toFixed(5)}-${w.lon.toFixed(5)}`}
+            center={[w.lat, w.lon]}
+            radius={5}
+            pathOptions={{ color: "#64748b", weight: 2, fillColor: "#94a3b8", fillOpacity: 0.9 }}
+          >
+            <Popup>
+              <div style={{ minWidth: 160 }}>
+                <div style={{ fontWeight: 600 }}>{w.title || "Webcam"}</div>
+                <div style={{ color: "#6b7280", fontSize: 12 }}>
+                  {w.city || w.region || w.country || "—"}
+                </div>
+                <div style={{ color: "#64748b", fontSize: 11, marginTop: 4 }}>
+                  {(w.distance / 1000).toFixed(1)} km away
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  <a href={w.detailUrl} target="_blank" rel="noreferrer">
+                    View on Windy
+                  </a>
+                </div>
+              </div>
+            </Popup>
+          </CircleMarker>
+        ))}
 
+
+ 
         {/* 地圖事件：mousemove → external hover；click → focus */}
         <MapEventsBridge
           elevPts={elevPts}
@@ -307,6 +383,7 @@ export default function MapView() {
 
         {/* 飛到選中點 */}
         <FlyToOnPoint target={focusPt} minZoom={14} duration={0.8} />
+        <FlyToOnPoint target={webcamFlyTarget} minZoom={14} duration={0.8} />
       </MapContainer>
 
       {/* 右上角：分段長度切換 */}
