@@ -103,13 +103,13 @@ export default function WebcamsPanel({ center, onPick, onLoaded }: Props) {
           key={`${w.id || "noid"}-${w.lat.toFixed(5)}-${w.lon.toFixed(5)}-${idx}`} // ← 唯一 key，修正警告
           style={{ display: "flex", gap: 8, padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}
         >
-          <img
+          {/* <img
             src={w.preview}
             alt={w.title}
             width={96}
             height={64}
             style={{ objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }}
-          />
+          /> */}
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, marginBottom: 2 }}>{w.title || "Webcam"}</div>
             <div style={{ color: "#6b7280" }}>

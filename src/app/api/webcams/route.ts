@@ -19,8 +19,8 @@ type WindyWebcam = {
 };
 
 type WindyResp =
-  | { result?: { webcams?: WindyWebcam[]; webcam?: WindyWebcam } }
-  | { webcams?: WindyWebcam[]; webcam?: WindyWebcam };
+  | { result?: { webcams?: WindyWebcam[]; webcam?: WindyWebcam | WindyWebcam[] } }
+  | { webcams?: WindyWebcam[]; webcam?: WindyWebcam | WindyWebcam[]};
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
   const toRad = (x: number) => (x * Math.PI) / 180;
@@ -63,16 +63,31 @@ async function windyFetch(url: string, tries = 3, perTryTimeoutMs = 12_000): Pro
   throw lastErr ?? new Error("Windy fetch failed");
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function asWebcamArray(v: unknown): WindyWebcam[] {
+  if (Array.isArray(v)) return v as WindyWebcam[];
+  if (isRecord(v)) return [v as WindyWebcam];
+  return [];
+}
+
+function toArray<T>(v: T | T[] | null | undefined): T[] {
+  return v == null ? [] : Array.isArray(v) ? v : [v];
+}
+
+/** 將不同端點的回傳統一攤平成 WindyWebcam[] */
 function normalizeList(j: WindyResp): WindyWebcam[] {
-  // 盡可能把不同端點的返回都揉成陣列
-  const arr =
-    (j as any)?.result?.webcams ??
-    (j as any)?.result?.webcam ??
-    (j as any)?.webcams ??
-    (j as any)?.webcam ??
-    [];
-  if (Array.isArray(arr)) return arr;
-  if (arr && typeof arr === "object") return [arr as WindyWebcam];
+  // 先處理 result 包裝的情況
+  if ("result" in j && j.result) {
+    const r = j.result;
+    if (r.webcams && Array.isArray(r.webcams)) return r.webcams;
+    if (r.webcam) return toArray(r.webcam);
+  }
+  // 再處理頂層直接回傳的情況
+  if ("webcams" in j && j.webcams && Array.isArray(j.webcams)) return j.webcams;
+  if ("webcam" in j && j.webcam) return toArray(j.webcam);
   return [];
 }
 

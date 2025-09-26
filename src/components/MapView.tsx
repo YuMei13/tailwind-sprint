@@ -145,6 +145,17 @@ function MapEventsBridge({
   return null;
 }
 
+function MapCenterTracker({ onChange }: { onChange: (c: { lat: number; lon: number }) => void }) {
+  const map = useMapEvents({
+    moveend() {
+      const c = map.getCenter();
+      onChange({ lat: c.lat, lon: c.lng });
+    },
+  });
+  return null;
+}
+
+
 export default function MapView() {
   // === 狀態 ===
   const [route, setRoute] = useState<LineLatLng>([]);
@@ -163,12 +174,12 @@ export default function MapView() {
   }
   }, [route]);
   
-  const handleWebcamPick = (lat: number, lon: number) => {
-  // 選到某個 webcam → 不影響坡面圖 focus
-  setFocusIdx(null);
-  // 讓 FlyToOnPoint 負責飛行
-  setWebcamFlyTarget({ lat, lon });
-  };
+  // const handleWebcamPick = (lat: number, lon: number) => {
+  // // 選到某個 webcam → 不影響坡面圖 focus
+  // setFocusIdx(null);
+  // // 讓 FlyToOnPoint 負責飛行
+  // setWebcamFlyTarget({ lat, lon });
+  // };
 
   // 查詢框 → 選擇的起訖點（[lon,lat]）
   // const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
@@ -282,16 +293,9 @@ export default function MapView() {
         center={[mapCenter.lat, mapCenter.lon]}
         zoom={13}
         style={{ height: "100%", width: "100%" }}
-        whenReady={(e) => {
-          // 同步地圖中心（供 panel 拉資料）
-          const map = e.target;
-          map.on("moveend", () => {
-            const c = map.getCenter();
-            setMapCenter({ lat: c.lat, lon: c.lng });
-          });
-        }}
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <MapCenterTracker onChange={setMapCenter} />
         {webcams.map((w, i) => (
           <CircleMarker
             key={`cam-${w.id || i}-${w.lat.toFixed(5)}-${w.lon.toFixed(5)}`}
