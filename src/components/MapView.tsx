@@ -189,7 +189,6 @@ export default function MapView() {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 25.05, lon: 121.52 });
   const [webcamFlyTarget, setWebcamFlyTarget] = useState<{ lat: number; lon: number } | null>(null);
   const [webcams, setWebcams] = useState<WebcamItem[]>([]);
-
   // 起訖（[lon,lat]）
   const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
   const [endLonLat, setEndLonLat] = useState<[number, number] | null>(null);
