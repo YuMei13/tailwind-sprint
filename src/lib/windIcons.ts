@@ -1,6 +1,7 @@
 // src/lib/windIcons.ts
 import L from "leaflet";
 
+
 /**
  * 根據風向與風速建立一個箭頭圖示
  * @param dirDeg 風向（度，0 = 北風 = 向南吹）
@@ -21,18 +22,24 @@ export function getArrowIcon(dirDeg: number, speedKmh: number): L.DivIcon {
 
   return L.divIcon({
     className: "", // 清除預設樣式
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
+    iconSize: [48, 48],
+    iconAnchor: [24, 24],
     html: `
       <div style="
-        width: 0;
-        height: 0;
-        border-left: 6px solid transparent;
-        border-right: 6px solid transparent;
-        border-bottom: 12px solid ${color};
-        transform: rotate(${dirDeg}deg);
-        transform-origin: center;
-      "></div>
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform: rotate(${dirDeg}deg);
+            color: ${"#6b7280"};
+            "
+            >
+            <svg width="48" height="48" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <polygon points="16,8 24,12 16,16" fill="currentColor" />
+            </svg>
+    </div>
     `,
   });
 }

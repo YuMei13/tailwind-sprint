@@ -1,5 +1,5 @@
 "use client";
-import { Marker, Polyline } from "react-leaflet";
+import { Marker, Polyline, Popup } from "react-leaflet";
 import { windToColor } from "@/lib/wind";
 import { getArrowIcon } from "@/lib/windIcons";
 import { haversine } from "@/lib/geo";
@@ -149,13 +149,20 @@ export default function RouteWindLayer({
         if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) return null;
         if (typeof w.dirDeg !== "number" || typeof w.speedKmh !== "number") return null;
 
-        const icon = getArrowIcon(w.dirDeg, w.speedKmh);
+        const icon = getArrowIcon(w.dirDeg, 60);
         return (
           <Marker
             key={`wind-${i}`}
             position={[w.lat, w.lon]}
             icon={icon}
-          />
+          >
+            {Number.isFinite(w.speedKmh) && (
+              <Popup>
+                <div>風速:{w.speedKmh?.toFixed(1)} km/h</div>
+              </Popup>
+            )}  
+          </Marker> 
+          
         );
       })}
     </>
