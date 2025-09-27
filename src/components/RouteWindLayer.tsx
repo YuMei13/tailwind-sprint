@@ -1,10 +1,9 @@
 "use client";
-import { useEffect } from "react";
-import { Polyline, useMap } from "react-leaflet";
-import L from "leaflet";
+import { Marker, Polyline } from "react-leaflet";
 import { windToColor } from "@/lib/wind";
-import { haversine } from "@/lib/geo";
 import { getArrowIcon } from "@/lib/windIcons";
+import { haversine } from "@/lib/geo";
+import L from "leaflet";
 
 export type WindPoint = {
   lat: number;
@@ -15,7 +14,7 @@ export type WindPoint = {
   msg?: string;
 };
 
-type LatLng = [number, number]; // [lat, lon]
+type LatLng = [number, number];
 
 type Props = {
   route: LatLng[];
@@ -73,14 +72,14 @@ function sliceBetween(route: LatLng[], cum: number[], d0: number, d1: number): L
       if (d0 <= da) {
         out.push(a);
       } else {
-        const t0 = Math.min(1, Math.max(0, (d0 - da) / segLen));
+        const t0 = (d0 - da) / segLen;
         out.push([a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0]);
       }
       started = true;
     }
 
     if (db >= d1) {
-      const t1 = Math.min(1, Math.max(0, (d1 - da) / segLen));
+      const t1 = (d1 - da) / segLen;
       out.push([a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1]);
       break;
     } else {
@@ -97,58 +96,7 @@ export default function RouteWindLayer({
   weight = 6,
   segmentMeters = 500,
 }: Props) {
-  const map = useMap();
-
-  // 渲染箭頭層
-  useEffect(() => {
-    const group = L.layerGroup();
-
-    winds.forEach((w) => {
-      if (w.error) return;
-      if (typeof w.lat !== "number" || typeof w.lon !== "number") return;
-      if (typeof w.speedKmh !== "number" || typeof w.dirDeg !== "number") return;
-
-      const lat = w.lat;
-      const lon = w.lon;
-      const deg = w.dirDeg;
-
-      const color = windToColor(w.speedKmh / 3.6);
-      // 微調箭頭長度可改這裡
-      const length = 0.0005;
-
-      const rad = (deg * Math.PI) / 180;
-      const dLat = length * Math.sin(rad);
-      const dLon = length * Math.cos(rad);
-
-      const arrow = L.polyline(
-        [
-          [lat, lon],
-          [lat + dLat, lon + dLon],
-        ],
-        {
-          color,
-          weight: 2,
-          opacity: 0.9,
-        }
-      ).bindTooltip(
-        `風速: ${(w.speedKmh / 3.6).toFixed(1)} m/s<br>方向: ${deg.toFixed(0)}°`,
-        { direction: "top", offset: L.point(0, -6) }
-      );
-
-      arrow.addTo(group);
-    });
-
-    group.addTo(map);
-    return () => {
-      map.removeLayer(group);
-    };
-    
-  }, [map, winds]);
-  console.log("rensder is ok?", winds);
-  // 畫彩線段這部分維持原本邏輯
-  if (!Array.isArray(route) || route.length < 2) {
-    return null;
-  }
+  if (!Array.isArray(route) || route.length < 2) return null;
 
   const cum = cumulativeDistances(route);
   const total = cum[cum.length - 1];
@@ -162,14 +110,16 @@ export default function RouteWindLayer({
   const buckets: number[][] = Array.from({ length: segCount }, () => []);
   for (const w of winds) {
     const sp = typeof w.speedKmh === "number" ? w.speedKmh / 3.6 : undefined;
-    if (!Number.isFinite(sp as number)) continue;
+    if (!Number.isFinite(sp)) continue;
     const idx = nearestIndex(route, [w.lat, w.lon]);
     const d = cum[idx];
     const k = Math.min(segCount - 1, Math.max(0, Math.floor(d / segLen)));
     buckets[k].push(sp as number);
   }
 
-  const segAvg = buckets.map((arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : undefined));
+  const segAvg: Array<number | undefined> = buckets.map((arr) =>
+    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : undefined
+  );
 
   const segments: { pts: LatLng[]; color: string }[] = [];
   for (let k = 0; k < segCount; k++) {
@@ -177,20 +127,37 @@ export default function RouteWindLayer({
     const d1 = Math.min(total, (k + 1) * segLen);
     const pts = sliceBetween(route, cum, d0, d1);
     if (pts.length < 2) continue;
+
     const sp = segAvg[k];
     const color = typeof sp === "number" ? windToColor(sp) : FALLBACK_COLOR;
-    segments.push({ pts, color });
-  }
 
-  if (segments.length === 0) {
-    return <Polyline positions={route} pathOptions={{ color: FALLBACK_COLOR, weight }} />;
+    segments.push({ pts, color });
   }
 
   return (
     <>
-      {segments.map((s, i) => (
-        <Polyline key={i} positions={s.pts} pathOptions={{ color: s.color, weight }} />
-      ))}
+      {segments.length > 0 ? (
+        segments.map((s, i) => (
+          <Polyline key={`seg-${i}`} positions={s.pts} pathOptions={{ color: s.color, weight }} />
+        ))
+      ) : (
+        <Polyline positions={route} pathOptions={{ color: FALLBACK_COLOR, weight }} />
+      )}
+
+      {/* ➤➤ 渲染風向箭頭 */}
+      {winds.map((w, i) => {
+        if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) return null;
+        if (typeof w.dirDeg !== "number" || typeof w.speedKmh !== "number") return null;
+
+        const icon = getArrowIcon(w.dirDeg, w.speedKmh);
+        return (
+          <Marker
+            key={`wind-${i}`}
+            position={[w.lat, w.lon]}
+            icon={icon}
+          />
+        );
+      })}
     </>
   );
 }

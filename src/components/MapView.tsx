@@ -451,7 +451,7 @@ export default function MapView() {
         {route.length > 0 && <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />}
 
         {/* 風資訊 marker（保留） */}
-        {winds.map((p, idx) => {
+        {/* {winds.map((p, idx) => {
           const pos: LatLng = [p.lat, p.lon];
           const speedMS = typeof p.speedKmh === "number" ? p.speedKmh / 3.6 : undefined;
           return (
@@ -464,7 +464,7 @@ export default function MapView() {
               </Popup>
             </Marker>
           );
-        })}
+        })} */}
 
         {/* 外部 hover/selected 的地圖高亮 */}
         {cursorPt && <CircleMarker center={[cursorPt.lat, cursorPt.lon]} radius={6} pathOptions={{ color: "#6366f1", weight: 2, fillColor: "#a5b4fc", fillOpacity: 0.8 }} />}
