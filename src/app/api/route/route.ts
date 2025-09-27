@@ -20,7 +20,7 @@ type ORSResponseJson = {
 
 type ORSResponse = (ORSResponseGeo & ORSResponseJson) & Record<string, unknown>;
 
-/** 解析 ORS encoded polyline（precision=6）。回傳 [lon,lat][] */
+/** 解析 ORS encoded polyline（precision=5）。回傳 [lon,lat][] */
 function decodePolyline6(str: string): [number, number][] {
   let index = 0;
   const len = str.length;
