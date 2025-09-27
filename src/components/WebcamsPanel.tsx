@@ -1,135 +1,135 @@
 // src/components/WebcamsPanel.tsx
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type WebcamItem = {
-  id: string;
-  title: string;
+  id?: string | number;
+  title?: string;
   lat: number;
   lon: number;
-  city: string;
-  region: string;
-  country: string;
+  distance: number;
+  city?: string;
+  region?: string;
+  country?: string;
   detailUrl: string;
-  preview: string;
-  playerDay?: string;
-  distance: number; // meters
+  // 可能出現的縮圖欄位
+  thumbnail?: string;
+  preview?: string;
+  image?: {
+    current?: { thumbnail?: string; preview?: string };
+    daylight?: { thumbnail?: string; preview?: string };
+  };
 };
 
-type Props = {
+export default function WebcamsPanel({
+  center,
+  onPick,
+  onLoaded,
+}: {
   center: { lat: number; lon: number };
   onPick: (lat: number, lon: number) => void;
-  onLoaded?: (items: WebcamItem[]) => void; // ← 新增：把結果回拋給地圖
-};
-
-export default function WebcamsPanel({ center, onPick, onLoaded }: Props) {
+  onLoaded?: (items: WebcamItem[]) => void;
+}) {
   const [items, setItems] = useState<WebcamItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [errMsg, setErrMsg] = useState<string | null>(null);
-  const [radiusKm, setRadiusKm] = useState(50); // 預設半徑大一點，較容易看到結果
+  const [err, setErr] = useState<string | null>(null);
+  const [radiusKm, setRadiusKm] = useState(20);
+
+  const url = useMemo(() => {
+    const p = new URLSearchParams({
+      lat: String(center.lat),
+      lon: String(center.lon),
+      radiusKm: String(radiusKm),
+      limit: "20",
+      include: "images,location,player,urls",
+    });
+    return `/api/webcams?${p.toString()}`;
+  }, [center.lat, center.lon, radiusKm]);
 
   useEffect(() => {
     let cancelled = false;
-    const run = async () => {
-      setLoading(true);
-      try {
-        setErrMsg(null);
-        const url = `/api/webcams?lat=${center.lat}&lon=${center.lon}&radiusKm=${radiusKm}&limit=20`;
-        const r = await fetch(url, { cache: "no-store" });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+    setLoading(true);
+    setErr(null);
+    fetch(url, { cache: "no-store" })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        const j = (await r.json()) as { items?: WebcamItem[] };
+        const rows = j.items ?? [];
         if (!cancelled) {
-          setItems(j.items ?? []);
-          onLoaded?.(j.items ?? []); // ← 回拋給 MapView
+          setItems(rows);
+          onLoaded?.(rows);
         }
-      } catch (e) {
-        if (!cancelled) {
-          setItems([]);
-          onLoaded?.([]); // ← 出錯也同步清空
-          setErrMsg(e instanceof Error ? e.message : "Fetch failed");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [center.lat, center.lon, radiusKm, onLoaded]);
+      })
+      .catch((e) => !cancelled && setErr(String(e)))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [url, onLoaded]);
+
+  const imgOf = (w: WebcamItem) =>
+    w.thumbnail ||
+    w.preview ||
+    w.image?.current?.thumbnail ||
+    w.image?.current?.preview ||
+    w.image?.daylight?.thumbnail ||
+    w.image?.daylight?.preview ||
+    "";
 
   return (
-    <div style={{
-      width: 320,
-      background: "rgba(255,255,255,0.95)",
-      borderRadius: 8,
-      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-      padding: 10,
-      fontSize: 12,
-      maxHeight: 420,
-      overflowY: "auto",
-    }}>
+    <div style={{ width: 360, background: "rgba(255,255,255,0.98)", border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, boxShadow: "0 6px 16px rgba(0,0,0,0.15)", zIndex: 1400 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <div style={{ fontWeight: 700 }}>Nearby webcams</div>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span>Radius</span>
-          <select value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} style={{ padding: "2px 6px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12 }}>Radius</span>
+          <select
+            value={radiusKm}
+            onChange={(e) => setRadiusKm(Number(e.target.value) || 20)}
+            style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid #d1d5db" }}
+          >
             <option value={10}>10 km</option>
-            <option value={30}>30 km</option>
+            <option value={20}>20 km</option>
             <option value={50}>50 km</option>
-            <option value={100}>100 km</option>
           </select>
-        </label>
+        </div>
       </div>
 
-      {errMsg && <div style={{ color: "#b91c1c", marginBottom: 6 }}>Webcams error: {errMsg}</div>}
-      {loading && <div>Loading…</div>}
-      {!loading && items.length === 0 && (
-        <div>
-          <div>No webcams found in {radiusKm} km.</div>
-          {radiusKm < 100 && (
-            <button
-              onClick={() => setRadiusKm(100)}
-              style={{ marginTop: 6, padding: "4px 8px", borderRadius: 6, border: "1px solid #2563eb", background: "#2563eb", color: "#fff" }}
-            >
-              Try 100 km radius
-            </button>
-          )}
-        </div>
-      )}
+      {loading && <div style={{ color: "#6b7280", fontSize: 13 }}>Loading…</div>}
+      {err && <div style={{ color: "#dc2626", fontSize: 13 }}>Error: {err}</div>}
+      {!loading && !err && items.length === 0 && <div style={{ color: "#6b7280", fontSize: 13 }}>No webcams nearby</div>}
 
-      {items.map((w, idx) => (
-        <div
-          key={`${w.id || "noid"}-${w.lat.toFixed(5)}-${w.lon.toFixed(5)}-${idx}`} // ← 唯一 key，修正警告
-          style={{ display: "flex", gap: 8, padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}
-        >
-          {/* <img
-            src={w.preview}
-            alt={w.title}
-            width={96}
-            height={64}
-            style={{ objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }}
-          /> */}
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, marginBottom: 2 }}>{w.title || "Webcam"}</div>
-            <div style={{ color: "#6b7280" }}>
-              {w.city || w.region || w.country ? `${w.city || ""}${w.region ? " · " + w.region : ""}${w.country ? " · " + w.country : ""}` : "—"}
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflow: "auto" }}>
+        {items.map((w) => {
+          const img = imgOf(w);
+          return (
+            <div key={`${w.id ?? `${w.lat},${w.lon}`}`} style={{ display: "flex", gap: 8, borderBottom: "1px solid #f1f5f9", paddingBottom: 8 }}>
+              <div style={{ width: 96, height: 64, borderRadius: 6, overflow: "hidden", background: "#f1f5f9", flex: "0 0 auto" }}>
+                {img ? (
+                  <img src={img} alt={w.title ?? "webcam"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", color: "#94a3b8", fontSize: 12 }}>no preview</div>
+                )}
+              </div>
+              <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                <div style={{ fontWeight: 600, lineHeight: 1.2 }}>{w.title || "Webcam"}</div>
+                <div style={{ color: "#6b7280", fontSize: 12, marginTop: 2 }}>
+                  {w.city || w.region || w.country || "—"}
+                </div>
+                <div style={{ color: "#64748b", fontSize: 11, marginTop: 4 }}>{(w.distance / 1000).toFixed(1)} km away</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                  <button
+                    onClick={() => onPick(w.lat, w.lon)}
+                    style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff" }}
+                  >
+                    Fly to
+                  </button>
+                  <a href={w.detailUrl} target="_blank" rel="noreferrer" style={{ color: "#2563eb", fontSize: 13 }}>
+                    View on Windy
+                  </a>
+                </div>
+              </div>
             </div>
-            <div style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>{(w.distance / 1000).toFixed(1)} km away</div>
-            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-              <button
-                onClick={() => onPick(w.lat, w.lon)}
-                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #2563eb", color: "#fff", background: "#2563eb" }}
-              >
-                Fly to
-              </button>
-              <a href={w.detailUrl} target="_blank" rel="noreferrer" style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff" }}>
-                View on Windy
-              </a>
-            </div>
-          </div>
-        </div>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 }
