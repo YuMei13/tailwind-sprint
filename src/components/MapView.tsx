@@ -477,7 +477,7 @@ export default function MapView() {
       </MapContainer>
 
       {/* 右上：分段長度（略往下，避免與搜尋卡片重疊；可調） */}
-      <div style={{ position: "absolute", right: 12, top: 12 + 360, zIndex: 1200 }}>
+      <div style={{ position: "absolute", right: 12, top: 12 + 260, zIndex: 1200 }}>
         <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
       </div>
 
