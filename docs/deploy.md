@@ -23,7 +23,7 @@ Set in **Vercel → Project → Settings → Environment Variables** ：
 ## Branch strategy
 - `main` → Production
 - `dev` → Preview
-- Feature/Chore → 建立 PR → merge 至 `dev`（Preview URL generateted automatically）
+- Feature/Chore → Request PR → merge 至 `dev`（Preview URL generateted automatically）
 
 ---
 
