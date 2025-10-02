@@ -425,7 +425,7 @@ export default function MapView() {
             key={`cam-${w.id || i}-${w.lat.toFixed(5)}-${w.lon.toFixed(5)}`}
             center={[w.lat, w.lon]}
             radius={5}
-            pathOptions={{ color: "#64748b", weight: 2, fillColor: "#94a3b8", fillOpacity: 0.9 }}
+            pathOptions={{ color: "#051e41ff", weight: 2, fillColor: "#1265daff", fillOpacity: 0.9 }}
           >
             <Popup>
               <div style={{ minWidth: 160 }}>
