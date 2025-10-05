@@ -201,6 +201,11 @@ export default function MapView() {
   const [focusIdx, setFocusIdx] = useState<number | null>(null);
   const [panelHoverIdx, setPanelHoverIdx] = useState<number | null>(null);
 
+  // show and hide panel
+  const [showWebcams, setShowWebcams] = useState(true);
+  const [showSegments, setShowSegments] = useState(true);
+  const [showElevation, setShowElevation] = useState(true);
+
   const focusPt = useMemo(() => {
     if (focusIdx == null || !elevPts[focusIdx]) return null;
     const p = elevPts[focusIdx];
@@ -356,16 +361,26 @@ export default function MapView() {
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
       {/* 左上：Webcams 側欄（提高層級，避免縮圖被蓋） */}
-      <div style={{ position: "absolute", left: 12, top: 12, zIndex: 1400 }}>
-        <WebcamsPanel
-          center={mapCenter}
-          onPick={(lat, lon) => { setFocusIdx(null); setWebcamFlyTarget({ lat, lon }); }}
-          onLoaded={setWebcams}
-        />
+      <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1400 }}>
+        {showWebcams ? (
+          <div style={{ background: "black", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontWeight: 600 }}>Webcams</span>
+              <button onClick={() => setShowWebcams(false)} style={{ fontSize: 12 }}>✖</button>
+            </div>
+            <WebcamsPanel
+              center={mapCenter}
+              onPick={(lat, lon) => { setFocusIdx(null); setWebcamFlyTarget({ lat, lon }); }}
+              onLoaded={setWebcams}
+            />
+          </div>
+        ) : (
+          <button onClick={() => setShowWebcams(true)} style={{ fontSize: 12, padding: "2px 6px" }}>Show Webcams</button>
+        )}
       </div>
-
+      
       {/* 右上：Route search 卡片（含地圖點選工具列） */}
-      <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1300, width: 360 }}>
+      <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1300, width: 280 }}>
         <div style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, boxShadow: "0 6px 16px rgba(0,0,0,0.15)" }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Route search</div>
           <GeocodeSearch
@@ -477,7 +492,17 @@ export default function MapView() {
 
       {/* 右上：分段長度（略往下，避免與搜尋卡片重疊；可調） */}
       <div style={{ position: "absolute", right: 12, top: 12 + 260, zIndex: 1200 }}>
-        <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
+        {showSegments ? (
+          <div style={{ background: "white", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontWeight: 600 }}>Segments</span>
+              <button onClick={() => setShowSegments(false)} style={{ fontSize: 12 }}>✖</button>
+            </div>
+            <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
+          </div>
+        ) : (
+          <button onClick={() => setShowSegments(true)} style={{ fontSize: 12, padding: "2px 6px" }}>Show Segments</button>
+        )}
       </div>
 
       {/* 右下：風速圖例 */}
@@ -486,15 +511,25 @@ export default function MapView() {
       </div>
 
       {/* 左下：坡面圖 */}
-      <div style={{ position: "absolute", left: 12, bottom: 12, zIndex: 1200 }}>
-        <ElevationPanel
-          points={elevPts as ElevPt[]}
-          selectedIndex={focusIdx}
-          externalHoverIndex={panelHoverIdx}
-          onHover={(pt) => { setCursorPt(pt && typeof pt.lat === "number" && typeof pt.lon === "number" ? { lat: pt.lat, lon: pt.lon } : null); }}
-          onLeave={() => setCursorPt(null)}
-          onClick={(_, idx) => { if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx)); }}
-        />
+      <div style={{ position: "absolute", left: 65, bottom: 12, zIndex: 1200 }}>
+        {showElevation ? (
+          <div style={{ background: "white", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontWeight: 600 }}>Elevation</span>
+              <button onClick={() => setShowElevation(false)} style={{ fontSize: 12 }}>✖</button>
+            </div>
+            <ElevationPanel
+              points={elevPts as ElevPt[]}
+              selectedIndex={focusIdx}
+              externalHoverIndex={panelHoverIdx}
+              onHover={(pt) => { setCursorPt(pt && typeof pt.lat === "number" && typeof pt.lon === "number" ? { lat: pt.lat, lon: pt.lon } : null); }}
+              onLeave={() => setCursorPt(null)}
+              onClick={(_, idx) => { if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx)); }}
+            />
+          </div>
+        ) : (
+          <button onClick={() => setShowElevation(true)} style={{ fontSize: 12, padding: "2px 6px" }}>Show Elevation</button>
+        )}
       </div>
     </div>
   );
