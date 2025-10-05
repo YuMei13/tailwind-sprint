@@ -1,10 +1,13 @@
-# API 說明
+# API Introduction
 
-此專案後端設計為 **Next.js App Router API Routes**，提供三個 proxy 服務：
+The backend design of this project is based on **Next.js App Router API Routes**，providing 5 proxy services：
 
 - `/api/route` → OpenRouteService (ORS)
 - `/api/wind` → Open-Meteo
 - `/api/elevation` → OpenTopoData
+- `/api/webcams` → Windy
+- `/api/geocode` → OpenRouteService (ORS)
+
 
 ---
 

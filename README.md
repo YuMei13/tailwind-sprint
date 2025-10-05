@@ -1,47 +1,50 @@
-# tailwind-sprint
+# 🌬️ Tailwind Sprint
 
-A project to visualise bike route with wind speed, direction and elevation panel.
+> A wind-aware route planner for cyclists and outdoor explorers
 
-👉 Documentation [docs/](./docs)：
+---
 
-- [API 說明](./docs/api.md)
-- [部署指南](./docs/deploy.md)
-- [開發規範](./docs/dev.md)
+## 🌐 Overview
 
+**Tailwind Sprint** is a map-based tool for route planning that takes wind direction and speed into account. You can select start and end points, visualize elevation profiles, view nearby webcams, and see wind direction arrows and speed-based color segments along the route.
 
-#### This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Built with: **Next.js 15**, **React Leaflet**, **TypeScript**, **Tailwind CSS**
 
-## Getting Started
+---
 
-First, run the development server:
+## 🔧 Features
+
+- 📍 Search or click to set start/end points
+- 🧭 Plan routes via OpenRouteService
+- 💨 Visualize wind direction (arrow) and wind speed (color)
+- 📈 Elevation profile integrated with wind data
+- 🎥 Display nearby webcams within 20km
+- ⚙️ Modular components for easy expansion
+
+---
+
+## 📦 Installation
 
 ```bash
+git clone https://github.com/YuMei13/tailwind-sprint.git
+cd tailwind-sprint
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🔐 Environment Variable
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Add .env.local file and file the API keys as below:
+Optional if using external APIs in production
+- OPENROUTESERVICE_API_KEY=your_ors_key
+- OPEN_METEO_API_URL=https://api.open-meteo.com
+- WEBCAMS_API_URL=https://api.windy.com/api/webcams/v2
+- WEBCAMS_API_KEY=your_webcams_key
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 👉 Documentation [docs/](./docs)：
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [API Introduction](./docs/api.md)
+- [Deployment](./docs/deploy.md)
+- [Development](./docs/dev.md)

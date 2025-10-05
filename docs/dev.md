@@ -1,25 +1,25 @@
-# 開發規範
+# Development Guideline
 
 ---
 
-## 環境需求
-- Node.js 20.x（建議）
+## Environment Requirement
+- Node.js 20.x（recommend）
 - npm 9+ / pnpm 8+
-- Ubuntu 22.04 (推)
+- Ubuntu 22.04 (recommend)
 
 ---
 
-## 本地開發
+## Local Development
 ```bash
-# 安裝依賴
+# Install Dependencies
 npm install
 
-# 啟動開發伺服器
+# run local server
 npm run dev
 # http://localhost:3000
 
 # Lint
 npm run lint
 
-# Build（CI 同步）
+# Build
 npm run build

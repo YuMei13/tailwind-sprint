@@ -1,43 +1,44 @@
 
 ---
 
-## 2️⃣ docs/deploy.md – 部署指南
+## 2️⃣ docs/deploy.md – Deployment Guideline
 ```markdown
-# 部署指南
+# 
 
-本專案採用 **Vercel** 進行 CI/CD。
+This project adopts **Vercel** to implement CI/CD。
 
 ---
 
-## 環境變數
-在 **Vercel → Project → Settings → Environment Variables** 中設定：
+## Environment Variables
+Set in **Vercel → Project → Settings → Environment Variables** ：
 
-| 名稱 | 說明 | 範例 |
+| Name | Introduction | Example |
 |---|---|---|
 | `ORS_API_KEY` | OpenRouteService API Key | `xxxxxx` |
-| `NEXT_PUBLIC_*` | 若要暴露到前端，請使用此前綴 | `NEXT_PUBLIC_MAP_TILE_URL=...` |
+| `NEXT_PUBLIC_*` | If you like to make it public, using this prefix
+| `NEXT_PUBLIC_MAP_TILE_URL=...` |
 
 ---
 
-## 分支策略
+## Branch strategy
 - `main` → Production
 - `dev` → Preview
-- Feature/Chore → 建立 PR → merge 至 `dev`（Preview URL 自動產生）
+- Feature/Chore → Request PR → merge 至 `dev`（Preview URL generateted automatically）
 
 ---
 
-## 部署步驟
-1. 登入 [Vercel](https://vercel.com/) 使用 GitHub 帳號
+## Procedure of Deployment
+1. Log in [Vercel](https://vercel.com/) with GitHub account
 2. Import 此 repo
-3. 設定環境變數
+3. Set environment variables
 4. Deploy！  
 
 > Production URL: <https://tailwind-sprint.vercel.app/>  
-> 每個 PR 將自動生成 Preview URL
+> every PR will generate Preview URL automatically
 
 ---
 
-## 注意事項
-- **首次 build 較久**：因 Next.js Turbopack 會現編
-- **API Key 必填**：ORS API 若未設定，地圖無法繪製路線
-- **網路不穩容錯**：後端已加 timeout/retry；單筆失敗會 fallback `error:true`
+## Notice
+- **Take time to build at beginning**：Since Next.js Turbopack complies contemporary.
+- **API Key is a must**：If the ORS API key is not set，the route can not be completed.
+- **Internet unstable tolerance**：timeout/retry already added in the backend；fallback would occur when try the first time. `error:true`

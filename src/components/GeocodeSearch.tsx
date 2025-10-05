@@ -134,7 +134,7 @@ export default function GeocodeSearch({ onPick, onSubmit, center, defaultStart, 
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 360 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 100 }}>
       <div style={box.label}>Start</div>
       <div style={box.container}>
         <input
@@ -142,7 +142,8 @@ export default function GeocodeSearch({ onPick, onSubmit, center, defaultStart, 
           onChange={(e) => setStartQ(e.target.value)}
           onKeyDown={(e) => onKey("start", startList, e)}
           placeholder="e.g., 台北車站 / Taipei Main Station"
-          style={box.input}
+          // style={box.input}
+          
         />
         {startList.length > 0 && renderList("start", startList)}
       </div>
@@ -154,18 +155,18 @@ export default function GeocodeSearch({ onPick, onSubmit, center, defaultStart, 
           onChange={(e) => setEndQ(e.target.value)}
           onKeyDown={(e) => onKey("end", endList, e)}
           placeholder="e.g., 淡水老街 / Tamsui Old Street"
-          style={box.input}
+          // style={box.input}
         />
         {endList.length > 0 && renderList("end", endList)}
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-        <button
+        {/* <button
           onClick={() => onSubmit?.(startQ, endQ)}
           style={{ padding: "6px 10px", borderRadius: 8, background: "#2563eb", color: "#fff", border: "1px solid #2563eb" }}
         >
           Find route
-        </button>
+        </button> */}
       </div>
     </div>
   );
