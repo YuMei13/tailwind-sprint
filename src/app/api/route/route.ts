@@ -76,7 +76,9 @@ export async function POST(req: NextRequest) {
       | { start?: LonLat; end?: LonLat; profile?: string }
       | { coordinates?: LonLat[]; profile?: string };
 
-    const profile = (bodyIn as any).profile ?? "cycling-regular";
+    const profile =  (typeof (bodyIn as Record<string, unknown>).profile === "string"
+        ? (bodyIn as { profile: string }).profile
+        : undefined) ?? "cycling-regular";
 
     // 兼容舊版 start/end 與新版 coordinates
     let coordinates: LonLat[] | null = null;
@@ -86,8 +88,8 @@ export async function POST(req: NextRequest) {
       if (arr.length >= 2) coordinates = arr;
     }
     if (!coordinates) {
-      const s = (bodyIn as any).start;
-      const e = (bodyIn as any).end;
+      const s = (bodyIn as Record<string, unknown>).start as LonLat | undefined;
+      const e = (bodyIn as Record<string, unknown>).end as LonLat | undefined;
       if (isValidLonLat(s) && isValidLonLat(e)) {
         coordinates = [s, e];
       }
