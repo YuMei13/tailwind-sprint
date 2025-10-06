@@ -78,6 +78,10 @@ export default function ElevationPanel({
       : null;
 
   useEffect(() => {
+    if (points.length < 2){
+      setHoverX(null);
+      setHoverIdx(null);
+    }
     if (!ready || hoverDist == null) {
       if (hoverIdx !== null) setHoverIdx(null);
       if (lastSentIdxRef.current !== null) {
@@ -101,7 +105,7 @@ export default function ElevationPanel({
       const origIdx = series.mapIdx[best];
       onHover?.(points[origIdx], origIdx);
     }
-  }, [hoverDist, ready]);
+  }, [hoverDist, ready, points]);
 
   // === 4. 刻度 ===
   const kmTotal = series.total / 1000;
@@ -240,7 +244,8 @@ export default function ElevationPanel({
               strokeDasharray="6 4"
             />
           )}
-          {displayHoverIdx != null && (
+          {displayHoverIdx != null && displayHoverIdx < series.dist.length && (
+            <>
             <line
               x1={x(series.dist[displayHoverIdx])}
               y1={Ptop}
@@ -249,6 +254,13 @@ export default function ElevationPanel({
               stroke="#6366f1"
               strokeDasharray="4 3"
             />
+            <circle
+              cx={x(series.dist[displayHoverIdx])}
+              cy={y(series.elev[displayHoverIdx])}
+              r={3}
+              fill="#1d4e8"
+            />
+            </>
           )}
         </svg>
       ) : (

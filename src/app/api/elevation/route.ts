@@ -56,7 +56,7 @@ async function fetchElevBatch(points: LonLat[], dataset: string, timeoutMs = 200
 
 export async function POST(req: NextRequest) {
   try {
-    const { coords, intervalMeters = 300, dataset = "srtm90m" } = (await req.json()) as {
+    const { coords, intervalMeters = 50, dataset = "srtm90m" } = (await req.json()) as {
       coords?: LonLat[];
       intervalMeters?: number;
       dataset?: string;
