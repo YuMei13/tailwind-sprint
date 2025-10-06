@@ -363,7 +363,7 @@ export default function MapView() {
       {/* 左上：Webcams 側欄（提高層級，避免縮圖被蓋） */}
       <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1400 }}>
         {showWebcams ? (
-          <div style={{ background: "black", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: 6 }}>
+          <div style={{ background: "rgba(255,255,255,0.95)", borderRadius: 8, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: 6 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <span style={{ fontWeight: 600 }}>Webcams</span>
               <button onClick={() => setShowWebcams(false)} style={{ fontSize: 12 }}>✖</button>

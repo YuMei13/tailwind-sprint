@@ -13,6 +13,7 @@ type Props = {
   externalHoverIndex?: number | null;   // 地圖滑動帶來的「外部 hover」（紫線）
 };
 
+
 export default function ElevationPanel({
   points,
   onHover,
@@ -43,7 +44,17 @@ export default function ElevationPanel({
     const total = dist[dist.length - 1];
     const min = Math.min(...elev);
     const max = Math.max(...elev);
-    return { dist, elev, total, min, max, ok, mapIdx };
+
+    // add slope function
+    const slopes: number[] = [];
+    for (let i = 1; i < ok.length; i++){
+      const dh = ok[i].elevation - ok[i - 1].elevation;
+      const dx = dist[i] - dist[i - 1];
+      const slopePct = dx > 0 ? (dh /dx) * 100 : 0;
+      slopes.push(slopePct);
+    }
+
+    return { dist, elev, total, min, max, ok, mapIdx, slopes};
   }, [points]);
 
   // 2) 狀態
@@ -51,13 +62,13 @@ export default function ElevationPanel({
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const lastSentIdxRef = useRef<number | null>(null);
 
-  const W = 520, H = 160, P = 28;
+  const W = 580, H = 230, Pleft = 55, Pright = 25, Ptop = 25, Pbottom = 40;
   const ready = series.dist.length >= 2;
 
-  const x = (d: number) => P + (d / Math.max(1, series.total)) * (W - 2 * P);
+  const x = (d: number) => Pleft + (d / Math.max(1, series.total)) * (W - Pleft - Pright);
   const y = (z: number) => {
     const range = Math.max(1, series.max - series.min);
-    return H - P - ((z - series.min) / range) * (H - 2 * P);
+    return H - Pbottom - ((z - series.min) / range) * (H - Ptop - Pbottom);
   };
 
   // path（可為空）
@@ -69,7 +80,7 @@ export default function ElevationPanel({
 
   // 3) 面板自身 hover 距離（不 ready 就固定 null）
   const hoverDist =
-    hoverX != null && ready ? ((hoverX - P) / Math.max(1, W - 2 * P)) * series.total : null;
+    hoverX != null && ready ? ((hoverX - Pleft) / Math.max(1, W - Pleft - Pright)) * series.total : null;
 
   // 4) 依 hoverDist 找最近點；只有變動才 setState / onHover
   useEffect(() => {
@@ -99,6 +110,26 @@ export default function ElevationPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hoverDist, ready]);
 
+  const kmTotal = series.total / 1000;
+  const yTicks = useMemo(() => {
+    if (!ready) return [];
+    const step = Math.max(10, Math.round((series.max - series.min) / 4 / 10) * 10);
+    const ticks = [];
+    for (let h = Math.floor(series.min / step) * step; h <= series.max; h += step)
+      ticks.push(h);
+    return ticks;
+  }, [series.min, series.max, ready]);
+
+  const xTicks = useMemo(() => {
+    if (!ready) return [];
+    const step = Math.max(0.5, Math.round((kmTotal / 5) * 2) / 2);
+    const ticks = [];
+    for (let k = 0; k <= kmTotal; k += step)
+      ticks.push(k);
+    return ticks;
+  }, [kmTotal, ready]);
+
+
   // 5) 外部選中（selectedIndex）映射到本面板的內部索引
   const selectedInnerIdx = useMemo(() => {
     if (!ready || selectedIndex == null) return null;
@@ -122,15 +153,28 @@ export default function ElevationPanel({
   // 面板內部 hover 顯示（紫）優先採用「外部 hover 覆蓋」，否則用本地滑鼠 hover
   const displayHoverIdx = externalHoverInnerIdx ?? hoverIdx;
 
+  const gradients: { x: number; y: number; grade: number }[] = [];
+  for (let i = 1; i < series.dist.length; i++) {
+    const dx = series.dist[i] - series.dist[i - 1];
+    const dz = series.elev[i] - series.elev[i - 1];
+    if (dx > 0) {
+      gradients.push({
+        x: (series.dist[i - 1] + series.dist[i]) / 2,
+        y: (series.elev[i - 1] + series.elev[i]) / 2,
+        grade: (dz / dx) * 100,
+      });
+    }
+  }
   return (
     <div
       style={{
         background: "rgba(255,255,255,0.95)",
         borderRadius: 8,
         boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        padding: 10,
+        padding: 20,
         fontSize: 12,
         lineHeight: 1.3,
+        color: "#1e293b"
       }}
       onMouseLeave={() => {
         setHoverX(null);
@@ -160,23 +204,104 @@ export default function ElevationPanel({
         style={{ cursor: "pointer" }}
       >
         {/* Axes */}
-        <line x1={P} y1={H - P} x2={W - P} y2={H - P} stroke="#cbd5e1" />
-        <line x1={P} y1={P} x2={P} y2={H - P} stroke="#cbd5e1" />
+        <line x1={Pleft} y1={H - Pbottom} x2={W - Pright} y2={H - Pbottom} stroke="#cbd5e1" />
+        <line x1={Pleft} y1={Ptop} x2={Pleft} y2={H - Pbottom} stroke="#cbd5e1" />
+
+        {/* Y軸刻度 */}
+        {yTicks.map((val, i) => {
+          const isZero = i === 0;
+          return (
+          <g key={i}>
+            <line
+              x1={Pleft - 5}
+              x2={Pleft}
+              y1={y(val) + (isZero ? -16 : 4)}
+              y2={y(val) + (isZero ? -16 : 4)}
+              stroke="#475569"
+              strokeWidth={1}
+            />
+            <text x={Pleft - 8} y={y(val) + (isZero ? -14 : 6)} textAnchor="end" fill="#334155" fontSize={10}>
+              {val} m
+            </text>
+          </g>
+        );
+        })}
+
+        {/* X軸刻度 */}
+        {xTicks.map((val, i) => (
+          <g key={i}>
+            <line
+              y1={H - Pbottom}
+              y2={H - Pbottom + 5}
+              x1={x((val / kmTotal) * series.total)}
+              x2={x((val / kmTotal) * series.total)}
+              stroke="#475569"
+              strokeWidth={1}
+            />
+            <text
+              x={x((val / kmTotal) * series.total)}
+              y={H - Pbottom + 18}
+              textAnchor="middle"
+              fill="#334155"
+              fontSize={10}
+            >
+              {val.toFixed(1)} km
+            </text>
+          </g>
+        ))}
+        
+
+        {/* Axis labels */}
+        <text x={W / 2} y={H} textAnchor="middle" fill="#334155" fontSize={11}>
+          Distance (km)
+        </text>
 
         {/* Area */}
-        <path d={`${pathD} L ${W - P},${H - P} L ${P},${H - P} Z`} fill="#93c5fd" opacity={0.35} />
+        <path d={`${pathD} L ${W - Pright},${H - Pbottom} L ${Pleft},${H - Pbottom} Z`} fill="#93c5fd" opacity={0.35} />
 
         {/* Line */}
         <path d={pathD} fill="none" stroke="#3b82f6" strokeWidth={2} />
+
+       
+        {/* 平均坡度文字標示
+        {series.dist.length > 1 && series.dist.slice(1).map((d, i) => {
+          const slope = series.slopes?.[i];
+          if (slope == null) return null;
+          // const absSlope = Math.abs(slope);
+          if (slope < 3) return null; // 小於 0.5% 不顯示
+
+          const x0 = x(series.dist[i - 1]);
+          const x1 = x(series.dist[i]);
+          const y0 = y(series.elev[i - 1]);
+          const y1 = y(series.elev[i]);
+          const xMid = (x0 + x1) / 2;
+          const yMid = (y0 + y1) / 2 - 8; // 字在中點上方一點
+
+          const color = slope >= 0 ? "#ef4444" : "#3b82f6";
+
+          return (
+            <text
+              key={`slope-${i}`}
+              x={xMid}
+              y={yMid}
+              textAnchor="middle"
+              fontSize={10}
+              fill={color}
+              opacity={0.7}
+            >
+              {slope.toFixed(1)}%
+            </text>
+          );
+        })} */}
 
         {/* 外部選中（深藍） */}
         {selectedInnerIdx != null && (
           <>
             <line
               x1={x(series.dist[selectedInnerIdx])}
-              y1={P}
+              y1={28}
               x2={x(series.dist[selectedInnerIdx])}
-              y2={H - P}
+              y2={H - 28}
               stroke="#1d4ed8"
               strokeDasharray="6 4"
             />
@@ -194,9 +319,9 @@ export default function ElevationPanel({
           <>
             <line
               x1={x(series.dist[displayHoverIdx])}
-              y1={P}
+              y1={Pleft}
               x2={x(series.dist[displayHoverIdx])}
-              y2={H - P}
+              y2={H - Pleft}
               stroke="#6366f1"
               strokeDasharray="4 3"
             />
