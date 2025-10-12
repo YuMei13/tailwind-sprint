@@ -16,7 +16,7 @@ export default function WindLegend() {
         lineHeight: 1.3,
       }}
     >
-      <div style={{ fontWeight: 700, marginBottom: 6 }}>Wind Speed (m/s)</div>
+      <div style={{ fontSize: 12, color: "#1e293b", fontWeight: 700, marginBottom: 6 }}>Wind Speed (m/s)</div>
       {WIND_BINS_MS.map((b, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", margin: "4px 0" }}>
           <span
