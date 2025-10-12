@@ -117,7 +117,7 @@ export default function WebcamsPanel({
                 <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                   <button
                     onClick={() => onPick(w.lat, w.lon)}
-                    style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff" }}
+                    style={{ fontSize: 12, color: "#1e293b",padding: "4px 8px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff" }}
                   >
                     Fly to
                   </button>

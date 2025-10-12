@@ -232,6 +232,7 @@ export default function MapView() {
   const [showWebcams, setShowWebcams] = useState(true);
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
+  const [showRouteSearch, setShowRouteSearch] = useState(true);
 
   const focusPt = useMemo(() => {
     if (focusIdx == null || !elevPts[focusIdx]) return null;
@@ -420,9 +421,11 @@ export default function MapView() {
           <div
             style={{
               background: "rgba(255,255,255,0.95)",
+              color: "#1e293b",
               borderRadius: 8,
               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: 6,
+              filter: "none",
             }}
           >
             <div
@@ -451,16 +454,23 @@ export default function MapView() {
 
       {/* 右上：Route search（含地圖點選工具列 + Clear） */}
       <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1300, width: 300 }}>
+        {showRouteSearch ? (
         <div
           style={{
             background: "rgba(255,255,255,0.95)",
+            color: "#1e293b",
             border: "1px solid #e5e7eb",
             borderRadius: 8,
             padding: 10,
             boxShadow: "0 6px 16px rgba(0,0,0,0.15)",
+            filter: "none",
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Route search</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontWeight: 700 }}>Route Search</span>
+            <button onClick={() => setShowRouteSearch(false)} style={{ fontSize: 12, color: "#1e293b" }}>✖</button>
+          </div>
+          {/* <div style={{ fontWeight: 700, marginBottom: 6 }}>Route search</div> */}
           <GeocodeSearch
             center={mapCenter}
             onPick={(role: Role, lat: number, lon: number) => {
@@ -479,6 +489,8 @@ export default function MapView() {
             <button
               onClick={() => setPickMode((m) => (m === "start" ? "none" : "start"))}
               style={{
+                fontSize: 12,
+                color: "#1e293b",
                 padding: "6px 10px",
                 borderRadius: 8,
                 border: "1px solid #d1d5db",
@@ -491,6 +503,8 @@ export default function MapView() {
             <button
               onClick={() => setPickMode((m) => (m === "end" ? "none" : "end"))}
               style={{
+                fontSize: 12, 
+                color: "#1e293b",
                 padding: "6px 10px",
                 borderRadius: 8,
                 border: "1px solid #d1d5db",
@@ -503,6 +517,8 @@ export default function MapView() {
             <button
               onClick={() => setPickMode((m) => (m === "waypoint" ? "none" : "waypoint"))}
               style={{
+                fontSize: 12, 
+                color: "#1e293b",
                 padding: "6px 10px",
                 borderRadius: 8,
                 border: "1px solid #d1d5db",
@@ -515,6 +531,8 @@ export default function MapView() {
             <button
               onClick={handleClearRoute}
               style={{
+                fontSize: 12, 
+                color: "#1e293b",
                 padding: "6px 10px",
                 borderRadius: 8,
                 border: "1px solid #fecaca",
@@ -533,6 +551,22 @@ export default function MapView() {
             </div>
           )}
         </div>
+          ): (
+          <button
+            onClick={() => setShowRouteSearch(true)}
+            style={{
+              fontSize: 12,
+              padding: "4px 8px",
+              background: "rgba(255,255,255,0.9)",
+              border: "1px solid #d1d5db",
+              borderRadius: 6,
+              color: "#1e293b",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+            }}
+          >
+            Show Route Search
+          </button>
+        )}
       </div>
 
       <MapContainer center={centerPos} zoom={13} style={{ height: "100%", width: "100%" }}>
@@ -650,10 +684,12 @@ export default function MapView() {
         {showSegments ? (
           <div
             style={{
-              background: "white",
+              background: "rgba(255,255,255,0.95)",
+              color: "#1e293b",
               borderRadius: 8,
               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: 6,
+              filter: "none",
             }}
           >
             <div
@@ -674,7 +710,7 @@ export default function MapView() {
       </div>
 
       {/* 右下：風速圖例 */}
-      <div style={{ position: "absolute", right: 12, bottom: 12, zIndex: 1200 }}>
+      <div style={{ fontSize: 12, color: "#1e293b", position: "absolute", right: 12, bottom: 12, zIndex: 1200 }}>
         <WindLegend />
       </div>
 
@@ -683,10 +719,12 @@ export default function MapView() {
         {showElevation ? (
           <div
             style={{
-              background: "white",
+              background: "rgba(255,255,255,0.95)",
+              color: "#1e293b",
               borderRadius: 8,
               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: 6,
+              filter: "none",
             }}
           >
             <div
