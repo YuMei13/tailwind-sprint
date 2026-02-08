@@ -262,6 +262,18 @@ export default function MapView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Clear URL params on mount to start fresh
+  useEffect(() => {
+    const sp = new URLSearchParams(searchParams.toString());
+    if (sp.has("start") || sp.has("end")) {
+      sp.delete("start");
+      sp.delete("end");
+      const newParams = sp.toString();
+      router.replace(newParams ? `${pathname}?${newParams}` : pathname, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const writeQuery = (start: [number, number] | null, end: [number, number] | null) => {
     const sp = new URLSearchParams(searchParams.toString());
     const fmt = (p: [number, number]) => `${p[1].toFixed(6)},${p[0].toFixed(6)}`; // lat,lon
@@ -309,6 +321,10 @@ export default function MapView() {
       first: merged[0],
       last: merged[merged.length - 1],
     });
+
+    // Clear old wind arrows immediately
+    setWinds([]);
+    setElevPts([]);
 
     if (merged.length < 2) {
       console.warn("No valid merged coordinates");
@@ -815,19 +831,6 @@ export default function MapView() {
           <div>elevation error points: {routeDebug.elevationErrors}</div>
           {routeDebug.message && <div style={{ color: "#b91c1c" }}>message: {routeDebug.message}</div>}
           <div>updated: {new Date(routeDebug.updatedAt).toLocaleTimeString()}</div>
-          <pre
-            style={{
-              marginTop: 6,
-              maxHeight: 120,
-              overflow: "auto",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: 6,
-              padding: 6,
-            }}
-          >
-            {JSON.stringify({ sampleLonLat: routeDebug.sampleLonLat }, null, 2)}
-          </pre>
         </div>
       )}
 

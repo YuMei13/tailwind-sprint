@@ -105,7 +105,7 @@ export default function ElevationPanel({
       const origIdx = series.mapIdx[best];
       onHover?.(points[origIdx], origIdx);
     }
-  }, [hoverDist, ready, points]);
+  }, [hoverDist, hoverX, ready, points, series]);
 
   // === 4. 刻度 ===
   const kmTotal = series.total / 1000;
@@ -138,7 +138,7 @@ export default function ElevationPanel({
     return i >= 0 ? i : null;
   }, [ready, externalHoverIndex, series.mapIdx]);
 
-  const displayHoverIdx = externalHoverInnerIdx ?? hoverIdx;
+  const displayHoverIdx = hoverX != null ? hoverIdx : (externalHoverInnerIdx ?? hoverIdx);
 
   const km = (series.total / 1000).toFixed(2);
   const minStr = series.min.toFixed(0);
@@ -169,8 +169,12 @@ export default function ElevationPanel({
           width={W}
           height={H}
           onMouseMove={(e) => {
-            const xPos = (e.nativeEvent as unknown as MouseEvent & { offsetX: number }).offsetX;
-            setHoverX((prev) => (prev === xPos ? prev : xPos));
+            const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+            const xPos = e.clientX - rect.left;
+            setHoverX(xPos);
+          }}
+          onMouseLeave={() => {
+            setHoverX(null);
           }}
           onClick={() => {
             const innerIdx = displayHoverIdx ?? hoverIdx;
@@ -181,7 +185,7 @@ export default function ElevationPanel({
             const origIdx = series.mapIdx[innerIdx];
             onClick?.(points[origIdx], origIdx);
           }}
-          style={{ cursor: "pointer" }}
+          style={{ cursor: "pointer", pointerEvents: "auto", display: "block" }}
         >
           {/* Axes */}
           <line x1={Pleft} y1={H - Pbottom} x2={W - Pright} y2={H - Pbottom} stroke="#cbd5e1" />
