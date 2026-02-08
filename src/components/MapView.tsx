@@ -767,40 +767,48 @@ export default function MapView() {
         }}
       />
 
-      
-
-      {/* Right middle: Segments */}
-      <div style={{ position: "absolute", right: 12, top: 320, zIndex: 1200 }}>
-        {showSegments ? (
-          <div
-            style={{
-              background: "rgba(255,255,255,0.95)",
-              color: "#1e293b",
-              borderRadius: 8,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-              padding: 6,
-            }}
-          >
+      {/* Bottom-right: Segments + Wind legend */}
+      <div
+        style={{
+          position: "absolute",
+          right: 12,
+          bottom: 12,
+          zIndex: 1200,
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 8,
+        }}
+      >
+        <div>
+          {showSegments ? (
             <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
+              style={{
+                background: "rgba(255,255,255,0.95)",
+                color: "#1e293b",
+                borderRadius: 8,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                padding: 6,
+              }}
             >
-              <span style={{ fontWeight: 600 }}>Segments</span>
-              <button onClick={() => setShowSegments(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
-                ✖
-              </button>
+              <div
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
+              >
+                <span style={{ fontWeight: 600 }}>Wing Sampling Segments</span>
+                <button onClick={() => setShowSegments(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
+                  ✖
+                </button>
+              </div>
+              <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
             </div>
-            <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
-          </div>
-        ) : (
-          <button onClick={() => setShowSegments(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
-            Show Segments
-          </button>
-        )}
-      </div>
-
-      {/* Right bottom: Wind legend */}
-      <div style={{ fontSize: 12, color: "#1e293b", position: "absolute", right: 12, bottom: 12, zIndex: 1200 }}>
-        <WindLegend />
+          ) : (
+            <button onClick={() => setShowSegments(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
+              Show Segments
+            </button>
+          )}
+        </div>
+        <div style={{ fontSize: 12, color: "#1e293b" }}>
+          <WindLegend />
+        </div>
       </div>
 
       {/* Left middle: Routing debug */}

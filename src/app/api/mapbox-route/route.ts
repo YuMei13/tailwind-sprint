@@ -36,13 +36,8 @@ function isValidLonLat(p: unknown): p is LonLat {
 
 export async function POST(req: NextRequest) {
   try {
-    const bodyIn = (await req.json()) as
-      | { start?: LonLat; end?: LonLat; profile?: string }
-      | { coordinates?: LonLat[]; profile?: string };
-
-    const profile = (typeof (bodyIn as Record<string, unknown>).profile === "string"
-      ? (bodyIn as { profile: string }).profile
-      : undefined) ?? "cycling";
+    const bodyIn = (await req.json()) as { start?: LonLat; end?: LonLat; coordinates?: LonLat[] };
+    const profile = "cycling";
 
     // Compatible with start/end and coordinates input
     let coordinates: LonLat[] | null = null;

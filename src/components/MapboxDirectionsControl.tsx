@@ -28,6 +28,9 @@ type MapboxDirectionsConstructor = new (options: {
   alternatives?: boolean;
   geometries?: "geojson" | "polyline" | "polyline6";
   profile?: string;
+  controls?: {
+    profileSwitcher?: boolean;
+  };
 }) => MapboxDirectionsControlInstance;
 
 declare global {
@@ -98,6 +101,9 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
           alternatives: true,
           geometries: "geojson",
           profile: "mapbox/cycling",
+          controls: {
+            profileSwitcher: false,
+          },
         });
 
         directionsRef.current = directions;
@@ -159,9 +165,13 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
         const destRef: { current: [number, number] | null } = { current: null };
         let lastRouteKey = "";
 
-        const extractFeatureCoord = (evt: any): [number, number] | null => {
+        const extractFeatureCoord = (evt: unknown): [number, number] | null => {
           try {
-            const f = evt?.feature ?? evt;
+            const maybeEvent = evt as {
+              feature?: { geometry?: { coordinates?: unknown } };
+              geometry?: { coordinates?: unknown };
+            };
+            const f = maybeEvent?.feature ?? maybeEvent;
             const coord = f?.geometry?.coordinates;
             if (Array.isArray(coord) && coord.length >= 2 && Number.isFinite(coord[0]) && Number.isFinite(coord[1])) {
               return [coord[0], coord[1]] as [number, number];
@@ -203,14 +213,14 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
 
         directions.on("origin", (e: unknown) => {
           console.warn("MapboxDirectionsControl: origin set", e);
-          const c = extractFeatureCoord(e as any);
+          const c = extractFeatureCoord(e);
           originRef.current = c;
           void tryFetchNormalizedRoute();
         });
 
         directions.on("destination", (e: unknown) => {
           console.warn("MapboxDirectionsControl: destination set", e);
-          const c = extractFeatureCoord(e as any);
+          const c = extractFeatureCoord(e);
           destRef.current = c;
           void tryFetchNormalizedRoute();
         });

@@ -55,7 +55,7 @@ export default function SegmentationControls({ value, onChange }: Props) {
             type="number"
             min={50}
             step={50}
-            placeholder="自訂(≥50)"
+            placeholder="Set (≥50)"
             value={custom}
             onChange={(e) => setCustom(e.target.value)}
             style={{
@@ -70,17 +70,19 @@ export default function SegmentationControls({ value, onChange }: Props) {
             style={{
               padding: "6px 10px",
               borderRadius: 6,
-              border: "1px solid #d1d5db",
-              background: "#fff",
+              border: "1px solid #94a3b8",
+              background: "#f8fafc",
+              color: "#0f172a",
+              fontWeight: 600,
               cursor: "pointer",
             }}
           >
-            套用
+            Render
           </button>
         </form>
       </div>
       <div style={{ marginTop: 6, color: "#6b7280" }}>
-        目前：<b>{value}</b> m（建議 300–800）
+        Current：<b>{value}</b> m（Recommend 300–800）
       </div>
     </div>
   );
