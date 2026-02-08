@@ -5,6 +5,9 @@ type MemoryStore = Map<string, { exp: number; val: unknown }>;
 type CacheClient =
   | { type: "redis"; client: Redis }
   | { type: "memory"; store: MemoryStore };
+const fallbackStore: MemoryStore = new Map<string, { exp: number; val: unknown }>();
+let warnedRedisRead = false;
+let warnedRedisWrite = false;
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -16,8 +19,23 @@ const client: CacheClient =
 
 export async function getCache<T = unknown>(key: string): Promise<T | null> {
   if (client.type === "redis") {
-    const v = await client.client.get<T>(key);
-    return (v ?? null) as T | null;
+    try {
+      const v = await client.client.get<T>(key);
+      if (v != null) return v as T;
+    } catch (e) {
+      if (!warnedRedisRead) {
+        warnedRedisRead = true;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn("Cache read fallback to memory:", msg);
+      }
+    }
+    const memHit = fallbackStore.get(key);
+    if (!memHit) return null;
+    if (Date.now() > memHit.exp) {
+      fallbackStore.delete(key);
+      return null;
+    }
+    return memHit.val as T;
   }
   const hit = client.store.get(key);
   if (!hit) return null;
@@ -30,7 +48,16 @@ export async function getCache<T = unknown>(key: string): Promise<T | null> {
 
 export async function setCache<T = unknown>(key: string, value: T, ttlSec: number): Promise<void> {
   if (client.type === "redis") {
-    await client.client.set(key, value, { ex: ttlSec });
+    try {
+      await client.client.set(key, value, { ex: ttlSec });
+    } catch (e) {
+      if (!warnedRedisWrite) {
+        warnedRedisWrite = true;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn("Cache write fallback to memory:", msg);
+      }
+      fallbackStore.set(key, { exp: Date.now() + ttlSec * 1000, val: value });
+    }
   } else {
     client.store.set(key, { exp: Date.now() + ttlSec * 1000, val: value });
   }
@@ -47,13 +74,17 @@ export async function cacheFetchJSON<T>(
   key: string,
   ttlSec: number,
   fetcher: () => Promise<T>,
-  forceNoCache: boolean
+  forceNoCache: boolean,
+  shouldCache?: (data: T) => boolean
 ): Promise<T> {
   if (!forceNoCache) {
     const hit = await getCache<T>(key);
     if (hit != null) return hit;
   }
   const data = await fetcher();
-  await setCache(key, data, ttlSec);
+  const okToCache = shouldCache ? shouldCache(data) : true;
+  if (okToCache) {
+    await setCache(key, data, ttlSec);
+  }
   return data;
 }

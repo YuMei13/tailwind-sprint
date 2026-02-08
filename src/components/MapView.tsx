@@ -17,6 +17,19 @@ type LineLatLng = LatLng[];
 
 type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
+type RouteSource = "planned" | "mapbox-directions";
+type RouteDebug = {
+  source: RouteSource;
+  incomingCount: number;
+  mergedCount: number;
+  sampleLonLat: [number, number][];
+  windCount: number;
+  elevationReturned: number;
+  elevationValid: number;
+  elevationErrors: number;
+  updatedAt: string;
+  message?: string;
+};
 
 // Validate coordinates
 function isValidCoordinate(lat: number, lon: number): boolean {
@@ -29,6 +42,15 @@ function isValidCoordinate(lat: number, lon: number): boolean {
     lon <= 180 &&
     !(lat === 0 && lon === 0)
   );
+}
+
+function toLonLat(coord: [number, number]): [number, number] | null {
+  const [a, b] = coord;
+  const aLatLon = Math.abs(a) <= 90 && Math.abs(b) <= 180;
+  const aLonLat = Math.abs(a) <= 180 && Math.abs(b) <= 90;
+  if (aLonLat && !aLatLon) return [a, b];
+  if (aLatLon) return [b, a];
+  return null;
 }
 
 // Fetch JSON with retry and timeout
@@ -187,6 +209,7 @@ export default function MapView() {
   const [showWebcams, setShowWebcams] = useState(true);
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
+  const [routeDebug, setRouteDebug] = useState<RouteDebug | null>(null);
 
   const mapRef = useRef<MapRef | null>(null);
 
@@ -195,6 +218,28 @@ export default function MapView() {
     const p = elevPts[focusIdx];
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
+
+  useEffect(() => {
+    console.warn("MapView: mounted");
+  }, []);
+
+  useEffect(() => {
+    if (!routeDebug) return;
+    console.groupCollapsed(
+      `[routing-debug] ${routeDebug.source} incoming=${routeDebug.incomingCount} merged=${routeDebug.mergedCount}`
+    );
+    console.log("routeDebug", routeDebug);
+    console.log("sampleLonLat", routeDebug.sampleLonLat);
+    console.groupEnd();
+  }, [routeDebug]);
+
+  useEffect(() => {
+    console.warn("[MapView] elevPts updated", {
+      count: elevPts.length,
+      hasElevation: elevPts.filter((p) => typeof p.elevation === "number").length,
+      sample: elevPts.slice(0, 3),
+    });
+  }, [elevPts]);
 
   // === URL Read/Write ===
   const router = useRouter();
@@ -240,7 +285,145 @@ export default function MapView() {
     return coordsRaw.filter(([lon, lat]) => isValidCoordinate(lat, lon));
   }
 
+  // Normalize a full route by sending raw coordinates to Mapbox route API
+  async function fetchRouteFromCoords(coords: [number, number][]): Promise<[number, number][]> {
+    const r = await fetchJSON<{ geometry: { type: string; coordinates: [number, number][] } }>("/api/mapbox-route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coordinates: coords, profile: "cycling" }),
+      timeoutMs: 45000,
+    });
+    const coordsRaw = r?.geometry?.coordinates ?? [];
+    return coordsRaw.filter(([lon, lat]) => isValidCoordinate(lat, lon));
+  }
+
   // Multi-point route planning
+  const applyRouteFromLonLat = async (
+    merged: [number, number][],
+    meta: { source: RouteSource; incomingCount: number }
+  ) => {
+    console.log("[routing] applyRouteFromLonLat:start", {
+      source: meta.source,
+      incomingCount: meta.incomingCount,
+      mergedCount: merged.length,
+      first: merged[0],
+      last: merged[merged.length - 1],
+    });
+
+    if (merged.length < 2) {
+      console.warn("No valid merged coordinates");
+      setRoute([]);
+      setWinds([]);
+      setElevPts([]);
+      setRouteDebug({
+        source: meta.source,
+        incomingCount: meta.incomingCount,
+        mergedCount: 0,
+        sampleLonLat: [],
+        windCount: 0,
+        elevationReturned: 0,
+        elevationValid: 0,
+        elevationErrors: 0,
+        updatedAt: new Date().toISOString(),
+        message: "No valid merged coordinates",
+      });
+      return;
+    }
+
+    // Set route (convert to [lat, lon])
+    const line: [number, number][] = merged.map(([lon, lat]) => [lat, lon]);
+    setRoute(line);
+
+    // Wind: sample ~40 points
+    const step = Math.max(1, Math.floor(merged.length / 40));
+    const sample = merged.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon]);
+    const last = merged[merged.length - 1];
+    const lastS = sample[sample.length - 1];
+    if (!lastS || lastS[0] !== last[1] || lastS[1] !== last[0]) {
+      sample.push([last[1], last[0]]);
+    }
+    let windPoints: WindPoint[] = [];
+    let windRequestFailed = false;
+    try {
+      const windData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ points: sample }),
+        timeoutMs: 30000,
+      });
+      windPoints = Array.isArray(windData.points) ? windData.points : [];
+      setWinds(windPoints);
+      console.log("[routing] wind response", { count: windPoints.length });
+    } catch {
+      windRequestFailed = true;
+      setWinds([]);
+      console.error("[routing] wind request failed");
+    }
+
+    // Elevation (~300m intervals)
+    let elevationPoints: ElevPoint[] = [];
+    let elevationRequestFailed = false;
+    try {
+      console.log("[routing] elevation request starting", {
+        mergedCount: merged.length,
+        first: merged[0],
+        last: merged[merged.length - 1],
+      });
+      const elevData = await fetchJSON<{ points: ElevPoint[] }>("/api/elevation?nocache=1", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coords: merged, intervalMeters: 300, dataset: "srtm90m" }),
+        timeoutMs: 30000,
+      });
+      elevationPoints = Array.isArray(elevData.points) ? elevData.points : [];
+      setElevPts(elevationPoints);
+      if (elevationPoints.length > 0) {
+        setShowElevation(true);
+      }
+      console.log("[routing] elevation response", {
+        returned: elevationPoints.length,
+        valid: elevationPoints.filter((p) => typeof p.elevation === "number").length,
+        errors: elevationPoints.filter((p) => p.error).length,
+        sample: elevationPoints.slice(0, 3),
+      });
+    } catch (err) {
+      elevationRequestFailed = true;
+      setElevPts([]);
+      console.error("[routing] elevation request failed", err instanceof Error ? err.message : String(err));
+    }
+
+    const sampleLonLat = [...merged.slice(0, 3), ...merged.slice(-3)];
+    const elevationValid = elevationPoints.filter((p) => typeof p.elevation === "number").length;
+    const elevationErrors = elevationPoints.filter((p) => p.error).length;
+    setRouteDebug({
+      source: meta.source,
+      incomingCount: meta.incomingCount,
+      mergedCount: merged.length,
+      sampleLonLat,
+      windCount: windPoints.length,
+      elevationReturned: elevationPoints.length,
+      elevationValid,
+      elevationErrors,
+      updatedAt: new Date().toISOString(),
+      message: elevationRequestFailed
+        ? "Elevation request failed"
+        : elevationValid > 0
+          ? windRequestFailed
+            ? "Wind request failed"
+            : undefined
+          : "Elevation API returned no numeric elevations",
+    });
+
+    // Center view
+    const mid = line[Math.floor(line.length / 2)];
+    if (mid) setMapCenter({ lat: mid[0], lon: mid[1] });
+
+    // Clear interaction state
+    setCursorPt(null);
+    setFocusIdx(null);
+    setPanelHoverIdx(null);
+  };
+
   const planRouteMulti = async (points: [number, number][]) => {
     try {
       if (points.length < 2) return;
@@ -255,59 +438,7 @@ export default function MapView() {
           merged.push(...leg);
         }
       }
-      if (merged.length < 2) {
-        console.warn("No valid merged coordinates");
-        setRoute([]);
-        setWinds([]);
-        setElevPts([]);
-        return;
-      }
-
-      // Set route (convert to [lat, lon])
-      const line: [number, number][] = merged.map(([lon, lat]) => [lat, lon]);
-      setRoute(line);
-
-      // Wind: sample ~40 points
-      const step = Math.max(1, Math.floor(merged.length / 40));
-      const sample = merged.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon]);
-      const last = merged[merged.length - 1];
-      const lastS = sample[sample.length - 1];
-      if (!lastS || lastS[0] !== last[1] || lastS[1] !== last[0]) {
-        sample.push([last[1], last[0]]);
-      }
-      try {
-        const windData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ points: sample }),
-          timeoutMs: 30000,
-        });
-        setWinds(Array.isArray(windData.points) ? windData.points : []);
-      } catch {
-        setWinds([]);
-      }
-
-      // Elevation (~300m intervals)
-      try {
-        const elevData = await fetchJSON<{ points: ElevPoint[] }>("/api/elevation", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ coords: merged, intervalMeters: 300, dataset: "srtm90m" }),
-          timeoutMs: 30000,
-        });
-        setElevPts(Array.isArray(elevData.points) ? elevData.points : []);
-      } catch {
-        setElevPts([]);
-      }
-
-      // Center view
-      const mid = line[Math.floor(line.length / 2)];
-      if (mid) setMapCenter({ lat: mid[0], lon: mid[1] });
-
-      // Clear interaction state
-      setCursorPt(null);
-      setFocusIdx(null);
-      setPanelHoverIdx(null);
+      await applyRouteFromLonLat(merged, { source: "planned", incomingCount: merged.length });
     } catch (e) {
       console.error("Route plan failed", e);
     }
@@ -358,6 +489,7 @@ export default function MapView() {
     setRoute([]);
     setWinds([]);
     setElevPts([]);
+    setRouteDebug(null);
   };
 
   // Fly to target
@@ -583,16 +715,43 @@ export default function MapView() {
       <MapboxDirectionsControl
         mapRef={mapRef}
         onRoute={(coords) => {
-          if (coords.length > 0) {
-            const reversed = coords.map(([lat, lon]) => [lon, lat] as [number, number]);
-            setRoute(reversed as LineLatLng);
+          console.warn("[routing] onRoute callback fired", { coordsCount: coords.length });
+          if (coords.length <= 1) return;
+          void (async () => {
+            const mergedFromPlugin = coords
+              .map((p) => toLonLat(p))
+              .filter((p): p is [number, number] => p !== null)
+              .filter(([lon, lat]) => isValidCoordinate(lat, lon));
+
+            let merged = mergedFromPlugin;
+            try {
+              const mergedFromMapboxApi = await fetchRouteFromCoords(mergedFromPlugin);
+              if (mergedFromMapboxApi.length > 1) {
+                merged = mergedFromMapboxApi;
+                console.warn("[routing] using mapbox-route geometry for elevation pipeline", {
+                  pluginPoints: mergedFromPlugin.length,
+                  mapboxRoutePoints: mergedFromMapboxApi.length,
+                });
+              }
+            } catch (e) {
+              console.error("[routing] mapbox-route normalization failed, fallback to plugin geometry", e);
+            }
+
+            await applyRouteFromLonLat(merged, {
+              source: "mapbox-directions",
+              incomingCount: coords.length,
+            });
+            const first = merged[0];
+            const last = merged[merged.length - 1];
             writeQuery(
-              [reversed[0][0], reversed[0][1]] as [number, number],
-              [reversed[reversed.length - 1][0], reversed[reversed.length - 1][1]] as [number, number]
+              first ? ([first[0], first[1]] as [number, number]) : null,
+              last ? ([last[0], last[1]] as [number, number]) : null
             );
-          }
+          })();
         }}
       />
+
+      
 
       {/* Right middle: Segments */}
       <div style={{ position: "absolute", right: 12, top: 320, zIndex: 1200 }}>
@@ -628,6 +787,50 @@ export default function MapView() {
         <WindLegend />
       </div>
 
+      {/* Left middle: Routing debug */}
+      {routeDebug && (
+        <div
+          style={{
+            position: "absolute",
+            left: 65,
+            top: 210,
+            zIndex: 1300,
+            background: "rgba(255,255,255,0.95)",
+            color: "#0f172a",
+            borderRadius: 8,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            padding: 8,
+            maxWidth: 560,
+            fontSize: 12,
+            lineHeight: 1.35,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Routing Data</div>
+          <div>source: {routeDebug.source}</div>
+          <div>incoming points: {routeDebug.incomingCount}</div>
+          <div>merged points: {routeDebug.mergedCount}</div>
+          <div>wind points: {routeDebug.windCount}</div>
+          <div>elevation returned: {routeDebug.elevationReturned}</div>
+          <div>elevation valid: {routeDebug.elevationValid}</div>
+          <div>elevation error points: {routeDebug.elevationErrors}</div>
+          {routeDebug.message && <div style={{ color: "#b91c1c" }}>message: {routeDebug.message}</div>}
+          <div>updated: {new Date(routeDebug.updatedAt).toLocaleTimeString()}</div>
+          <pre
+            style={{
+              marginTop: 6,
+              maxHeight: 120,
+              overflow: "auto",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              borderRadius: 6,
+              padding: 6,
+            }}
+          >
+            {JSON.stringify({ sampleLonLat: routeDebug.sampleLonLat }, null, 2)}
+          </pre>
+        </div>
+      )}
+
       {/* Left bottom: Elevation panel */}
       <div style={{ position: "absolute", left: 65, bottom: 12, zIndex: 1200 }}>
         {showElevation ? (
@@ -640,32 +843,43 @@ export default function MapView() {
               padding: 6,
               maxHeight: "60vh",
               overflowY: "auto",
+              minWidth: "250px",
             }}
           >
             <div
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
             >
-              <span style={{ fontWeight: 600 }}>Elevation</span>
+              <span style={{ fontWeight: 600 }}>Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}</span>
               <button onClick={() => setShowElevation(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
                 ✖
               </button>
             </div>
-            <ElevationPanel
-              points={elevPts as ElevPt[]}
-              selectedIndex={focusIdx}
-              externalHoverIndex={panelHoverIdx}
-              onHover={(pt) => {
-                setCursorPt(
-                  pt && typeof pt.lat === "number" && typeof pt.lon === "number"
-                    ? { lat: pt.lat, lon: pt.lon }
-                    : null
-                );
-              }}
-              onLeave={() => setCursorPt(null)}
-              onClick={(_, idx) => {
-                if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx));
-              }}
-            />
+            {/* Debug info */}
+            <div style={{ fontSize: 11, color: "#999", borderBottom: "1px solid #e5e7eb", paddingBottom: 4, marginBottom: 4 }}>
+              Points: {elevPts.length} | Valid: {elevPts.filter((p) => typeof p.elevation === "number").length}
+            </div>
+            {elevPts.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#666", padding: "8px 0" }}>
+                No elevation data. Draw a route to see the elevation profile.
+              </div>
+            ) : (
+              <ElevationPanel
+                points={elevPts as ElevPt[]}
+                selectedIndex={focusIdx}
+                externalHoverIndex={panelHoverIdx}
+                onHover={(pt) => {
+                  setCursorPt(
+                    pt && typeof pt.lat === "number" && typeof pt.lon === "number"
+                      ? { lat: pt.lat, lon: pt.lon }
+                      : null
+                  );
+                }}
+                onLeave={() => setCursorPt(null)}
+                onClick={(_, idx) => {
+                  if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx));
+                }}
+              />
+            )}
           </div>
         ) : (
           <button onClick={() => setShowElevation(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>

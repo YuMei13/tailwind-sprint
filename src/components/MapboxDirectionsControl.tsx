@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
 import type { MapRef } from "react-map-gl";
+import mapboxgl from "mapbox-gl";
 import type { IControl, Map as MapboxMap } from "mapbox-gl";
 
 type MapboxDirectionsControlProps = {
@@ -17,7 +18,7 @@ type DirectionsRouteEvent = {
 };
 
 type MapboxDirectionsControlInstance = IControl & {
-  on: (event: "route", handler: (e: DirectionsRouteEvent) => void) => void;
+  on: (event: string, handler: (e: unknown) => void) => void;
   container?: HTMLElement | null;
   _container?: HTMLElement | null;
 };
@@ -32,6 +33,7 @@ type MapboxDirectionsConstructor = new (options: {
 declare global {
   interface Window {
     MapboxDirections?: MapboxDirectionsConstructor;
+    mapboxgl?: typeof mapboxgl;
   }
 }
 
@@ -39,6 +41,7 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
   const directionsRef = useRef<MapboxDirectionsControlInstance | null>(null);
   const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
+  const initAttemptsRef = useRef(0);
   const onRouteRef = useRef<typeof onRoute>(onRoute);
   const mapInstanceRef = useRef<MapboxMap | null>(null);
 
@@ -51,21 +54,34 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
 
     const attemptInit = () => {
       if (isCancelled || isInitializedRef.current) return;
+      initAttemptsRef.current += 1;
       const m = mapRef.current?.getMap?.();
       if (!m) {
+        if (initAttemptsRef.current % 10 === 0) {
+          console.warn("MapboxDirectionsControl: waiting for map instance");
+        }
         initTimerRef.current = setTimeout(attemptInit, 300);
         return;
       }
       mapInstanceRef.current = m;
 
       if (!m.isStyleLoaded()) {
+        if (initAttemptsRef.current % 10 === 0) {
+          console.warn("MapboxDirectionsControl: waiting for map style");
+        }
         initTimerRef.current = setTimeout(attemptInit, 300);
         return;
       }
 
       // Check if plugin is ready
       const MapboxDir = window.MapboxDirections;
-      if (!MapboxDir) {
+      if (!MapboxDir || !window.mapboxgl) {
+        if (initAttemptsRef.current % 10 === 0) {
+          console.warn("MapboxDirectionsControl: waiting for directions plugin", {
+            hasMapboxDirections: !!MapboxDir,
+            hasWindowMapboxgl: !!window.mapboxgl,
+          });
+        }
         initTimerRef.current = setTimeout(attemptInit, 300);
         return;
       }
@@ -87,7 +103,7 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
         directionsRef.current = directions;
         m.addControl(directions, "top-right");
         isInitializedRef.current = true;
-        console.log("MapboxDirectionsControl: initialized successfully");
+        console.warn("MapboxDirectionsControl: initialized successfully");
 
         // Position it
         setTimeout(() => {
@@ -111,11 +127,96 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
         }
 
         // Listen for routes from the directions control
-        directions.on("route", (e: DirectionsRouteEvent) => {
-          if (e.route?.[0]?.geometry?.coordinates) {
-            const coords = e.route[0].geometry.coordinates.map(([lon, lat]: [number, number]) => [lat, lon] as [number, number]);
+        directions.on("route", (e: unknown) => {
+          const ev = e as DirectionsRouteEvent;
+          console.warn("MapboxDirectionsControl: route event fired", ev);
+          if (ev.route?.[0]?.geometry?.coordinates) {
+            const coords = ev.route[0].geometry.coordinates.map(([lon, lat]: [number, number]) => [lat, lon] as [number, number]);
+            console.warn("MapboxDirectionsControl: route received", coords.length, {
+              first: coords[0],
+              last: coords[coords.length - 1],
+            });
             onRouteRef.current?.(coords);
+          } else {
+            console.warn("MapboxDirectionsControl: route event without coordinates");
           }
+        });
+
+        directions.on("loading", (e: unknown) => {
+          console.warn("MapboxDirectionsControl: loading event", e);
+        });
+
+        directions.on("clear", (e: unknown) => {
+          console.warn("MapboxDirectionsControl: clear event", e);
+        });
+
+        directions.on("error", (e: unknown) => {
+          console.error("MapboxDirectionsControl: plugin error event", e);
+        });
+
+        // Track origin/destination features and fetch a normalized route
+        const originRef: { current: [number, number] | null } = { current: null };
+        const destRef: { current: [number, number] | null } = { current: null };
+        let lastRouteKey = "";
+
+        const extractFeatureCoord = (evt: any): [number, number] | null => {
+          try {
+            const f = evt?.feature ?? evt;
+            const coord = f?.geometry?.coordinates;
+            if (Array.isArray(coord) && coord.length >= 2 && Number.isFinite(coord[0]) && Number.isFinite(coord[1])) {
+              return [coord[0], coord[1]] as [number, number];
+            }
+          } catch {
+            // ignore
+          }
+          return null;
+        };
+
+        const tryFetchNormalizedRoute = async () => {
+          const o = originRef.current;
+          const d = destRef.current;
+          if (!o || !d) return;
+          const key = `${o[0]},${o[1]}|${d[0]},${d[1]}`;
+          if (key === lastRouteKey) return;
+          lastRouteKey = key;
+          try {
+            console.warn("MapboxDirectionsControl: fetching normalized route from API", { origin: o, destination: d });
+            const res = await fetch("/api/mapbox-route", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ start: o, end: d, profile: "cycling" }),
+            });
+            const json = await res.json();
+            const coordsRaw = Array.isArray(json?.geometry?.coordinates) ? json.geometry.coordinates : [];
+            if (!coordsRaw.length) {
+              console.warn("MapboxDirectionsControl: normalized route returned no coordinates", json);
+              return;
+            }
+            // map [lon, lat] -> [lat, lon] to match existing onRoute expectations
+            const coords = coordsRaw.map(([lon, lat]: [number, number]) => [lat, lon] as [number, number]);
+            console.warn("MapboxDirectionsControl: normalized route ready", { count: coords.length });
+            onRouteRef.current?.(coords);
+          } catch (err) {
+            console.error("MapboxDirectionsControl: failed to fetch normalized route", err instanceof Error ? err.message : String(err));
+          }
+        };
+
+        directions.on("origin", (e: unknown) => {
+          console.warn("MapboxDirectionsControl: origin set", e);
+          const c = extractFeatureCoord(e as any);
+          originRef.current = c;
+          void tryFetchNormalizedRoute();
+        });
+
+        directions.on("destination", (e: unknown) => {
+          console.warn("MapboxDirectionsControl: destination set", e);
+          const c = extractFeatureCoord(e as any);
+          destRef.current = c;
+          void tryFetchNormalizedRoute();
+        });
+
+        directions.on("profile", (e: unknown) => {
+          console.warn("MapboxDirectionsControl: profile changed", e);
         });
       } catch (err) {
         console.error("MapboxDirectionsControl error:", err);
@@ -145,21 +246,49 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
 
   // Load scripts once
   useEffect(() => {
+    console.warn("MapboxDirectionsControl: mount");
+    window.mapboxgl = mapboxgl;
+
+    const ensureScript = (src: string) =>
+      new Promise<void>((resolve, reject) => {
+        const existing = document.querySelector(`script[src="${src}"]`) as HTMLScriptElement | null;
+        if (existing) {
+          if ((existing as HTMLScriptElement).dataset.loaded === "1") {
+            resolve();
+            return;
+          }
+          existing.addEventListener("load", () => resolve(), { once: true });
+          existing.addEventListener("error", () => reject(new Error(`Failed loading ${src}`)), {
+            once: true,
+          });
+          return;
+        }
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = true;
+        s.addEventListener(
+          "load",
+          () => {
+            s.dataset.loaded = "1";
+            resolve();
+          },
+          { once: true }
+        );
+        s.addEventListener("error", () => reject(new Error(`Failed loading ${src}`)), { once: true });
+        document.head.appendChild(s);
+      });
+
     // Turf
-    if (!document.querySelector('script[src*="turf"]')) {
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js";
-      s.async = true;
-      document.head.appendChild(s);
-    }
+    void ensureScript("https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js").catch((err) => {
+      console.error("MapboxDirectionsControl: turf load failed", err);
+    });
 
     // Mapbox Directions JS
-    if (!document.querySelector('script[src*="mapbox-gl-directions"]')) {
-      const s = document.createElement("script");
-      s.src = "https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.3.0/mapbox-gl-directions.js";
-      s.async = true;
-      document.head.appendChild(s);
-    }
+    void ensureScript(
+      "https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.3.0/mapbox-gl-directions.js"
+    ).catch((err) => {
+      console.error("MapboxDirectionsControl: directions plugin load failed", err);
+    });
 
     // Mapbox Directions CSS
     if (!document.querySelector('link[href*="mapbox-gl-directions"]')) {
