@@ -8,6 +8,7 @@ import { haversine } from "@/lib/geo";
 export type WindPoint = {
   lat: number;
   lon: number;
+  speedMs?: number;
   speedKmh?: number;
   dirDeg?: number;
   error?: true;
@@ -101,10 +102,10 @@ export default function RouteWindLayer({
   // Debug: Log wind data
   if (winds.length > 0 && typeof window !== 'undefined') {
     const windSpeeds = winds
-      .filter((w) => typeof w.speedKmh === 'number')
+      .filter((w) => typeof w.speedMs === 'number' || typeof w.speedKmh === 'number')
       .map((w) => ({
+        speedMs: typeof w.speedMs === "number" ? w.speedMs : (w.speedKmh! / 3.6),
         speedKmh: w.speedKmh,
-        speedMs: (w.speedKmh! / 3.6).toFixed(2),
       }));
     console.log('[Wind Debug] Received winds:', { count: winds.length, samples: windSpeeds.slice(0, 5) });
   }
@@ -142,7 +143,12 @@ export default function RouteWindLayer({
 
   const buckets: number[][] = Array.from({ length: segCount }, () => []);
   for (const w of winds) {
-    const sp = typeof w.speedKmh === "number" ? w.speedKmh / 3.6 : undefined;
+    const sp =
+      typeof w.speedMs === "number"
+        ? w.speedMs
+        : typeof w.speedKmh === "number"
+          ? w.speedKmh / 3.6
+          : undefined;
     if (!Number.isFinite(sp)) continue;
     const idx = nearestIndex(route, [w.lat, w.lon]);
     const d = cum[idx];
@@ -236,9 +242,16 @@ export default function RouteWindLayer({
       {/* Render wind direction arrows */}
       {winds.map((w, i) => {
         if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) return null;
-        if (typeof w.dirDeg !== "number" || typeof w.speedKmh !== "number") return null;
+        if (typeof w.dirDeg !== "number") return null;
+        const speedMs =
+          typeof w.speedMs === "number"
+            ? w.speedMs
+            : typeof w.speedKmh === "number"
+              ? w.speedKmh / 3.6
+              : undefined;
+        if (typeof speedMs !== "number") return null;
 
-        const icon = getArrowIcon(w.dirDeg, 60);
+        const icon = getArrowIcon(w.dirDeg, speedMs);
         
         return (
           <Marker
@@ -247,7 +260,7 @@ export default function RouteWindLayer({
             latitude={w.lat}
           >
             <div
-              title={`Wind speed: ${w.speedKmh?.toFixed(1)} km/h`}
+              title={`Wind speed: ${(speedMs * 3.6).toFixed(1)} km/h (${speedMs.toFixed(1)} m/s)`}
               dangerouslySetInnerHTML={{ __html: icon }}
               style={{ cursor: "pointer" }}
             />

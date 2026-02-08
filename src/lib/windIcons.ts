@@ -1,22 +1,13 @@
 // src/lib/windIcons.ts
+import { windToColor } from "@/lib/wind";
 
 /**
  * Generate an arrow icon SVG for wind direction
  * @param dirDeg Wind direction (degrees, 0 = north wind = blowing south)
- * @param speedKmh Wind speed (km/h) - used for sizing
+ * @param speedMs Wind speed (m/s)
  */
-export function getArrowIcon(dirDeg: number, speedKmh: number): string {
-  // Color based on wind speed
-  let color = "#6b7280"; // gray
-  if (speedKmh > 50) {
-    color = "#ef4444"; // red
-  } else if (speedKmh > 30) {
-    color = "#f59e0b"; // orange
-  } else if (speedKmh > 15) {
-    color = "#3b82f6"; // blue
-  } else if (speedKmh >= 0) {
-    color = "#10b981"; // green
-  }
+export function getArrowIcon(dirDeg: number, speedMs: number): string {
+  const color = Number.isFinite(speedMs) ? windToColor(speedMs) : "#6b7280";
 
   return `
     <div style="
