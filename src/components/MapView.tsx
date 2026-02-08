@@ -1,47 +1,24 @@
 // src/components/MapView.tsx
 "use client";
 
-import "leaflet/dist/leaflet.css";
-import L from "leaflet";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  CircleMarker,
-  useMap,
-  useMapEvents,
-} from "react-leaflet";
+import Map, { Marker, Source, Layer, NavigationControl, MapRef } from "react-map-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWindLayer";
 import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import SegmentationControls from "@/components/SegmentationControls";
 import WebcamsPanel, { WebcamItem } from "@/components/WebcamsPanel";
-import GeocodeSearch, { Role } from "@/components/GeocodeSearch";
+import MapboxDirectionsControl from "@/components/MapboxDirectionsControl";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-
-// Leaflet 預設 marker 圖示
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
 
 type LatLng = [number, number]; // [lat, lon]
 type LineLatLng = LatLng[];
 
-type OrsAPIResponseFeature = {
-  features?: Array<{ geometry?: { coordinates?: [number, number][] } }>;
-  geometry?: { coordinates?: [number, number][] };
-};
-type OrsAPIResponse = { geometry: { type: "LineString"; coordinates: [number, number][] } };
-
 type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
 
-// 驗證經緯度
+// Validate coordinates
 function isValidCoordinate(lat: number, lon: number): boolean {
   return (
     Number.isFinite(lat) &&
@@ -54,7 +31,7 @@ function isValidCoordinate(lat: number, lon: number): boolean {
   );
 }
 
-// fetchJSON（沿用你的重試/timeout邏輯的精簡版）
+// Fetch JSON with retry and timeout
 function absUrl(path: string) {
   const base = typeof window !== "undefined" ? window.location.origin : "";
   return path.startsWith("http") ? path : `${base}${path}`;
@@ -92,26 +69,7 @@ async function fetchJSON<T>(
   throw new Error("unreachable");
 }
 
-// 飛到指定點
-function FlyToOnPoint({
-  target,
-  minZoom = 14,
-  duration = 0.8,
-}: {
-  target: { lat: number; lon: number } | null;
-  minZoom?: number;
-  duration?: number;
-}) {
-  const map = useMap();
-  useEffect(() => {
-    if (!target) return;
-    const z = Math.max(map.getZoom(), minZoom);
-    map.flyTo([target.lat, target.lon], z, { duration });
-  }, [target, map, minZoom, duration]);
-  return null;
-}
-
-// Elevation 對應：找最近索引
+// Find nearest elevation index
 function nearestElevIndex(elevPts: ElevPoint[], lat: number, lon: number): number | null {
   if (!elevPts.length) return null;
   let best = 0;
@@ -129,22 +87,33 @@ function nearestElevIndex(elevPts: ElevPoint[], lat: number, lon: number): numbe
   return best;
 }
 
-// Map ↔ Elevation 互動
-function MapEventsBridge({
+// Map interaction handler
+function MapInteraction({
   onPickIndex,
   onHoverIndex,
   elevPts,
+  mapRef,
+  pickMode,
+  onPick,
+  onDone,
 }: {
   onPickIndex: (idx: number | null) => void;
   onHoverIndex: (idx: number | null) => void;
   elevPts: ElevPoint[];
+  mapRef: React.RefObject<MapRef | null>;
+  pickMode: "none" | "start" | "end" | "waypoint";
+  onPick: (role: "start" | "end" | "waypoint", lat: number, lon: number) => void;
+  onDone: () => void;
 }) {
   const rafRef = useRef<number | null>(null);
   const lastIdxRef = useRef<number | null>(null);
 
-  useMapEvents({
-    mousemove(e) {
-      const { lat, lng } = e.latlng;
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current.getMap();
+    
+    const handleMouseMove = (e: any) => {
+      const { lng, lat } = e.lngLat;
       if (rafRef.current != null) return;
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
@@ -154,53 +123,40 @@ function MapEventsBridge({
           onHoverIndex(idx);
         }
       });
-    },
-    mouseout() {
+    };
+
+    const handleMouseOut = () => {
       lastIdxRef.current = null;
       onHoverIndex(null);
-    },
-    click(e) {
-      const { lat, lng } = e.latlng;
-      onPickIndex(nearestElevIndex(elevPts, lat, lng));
-    },
-  });
+    };
 
-  return null;
-}
+    const handleClick = (e: any) => {
+      const { lng, lat } = e.lngLat;
+      
+      if (pickMode !== "none") {
+        onPick(pickMode, lat, lng);
+        onDone();
+      } else {
+        onPickIndex(nearestElevIndex(elevPts, lat, lng));
+      }
+    };
 
-function MapCenterTracker({ onChange }: { onChange: (c: { lat: number; lon: number }) => void }) {
-  const map = useMapEvents({
-    moveend() {
-      const c = map.getCenter();
-      onChange({ lat: c.lat, lon: c.lng });
-    },
-  });
-  return null;
-}
+    map.on("mousemove", handleMouseMove);
+    map.on("mouseleave", handleMouseOut);
+    map.on("click", handleClick);
 
-// 地圖點選模式（start / end / waypoint）
-function MapClickPicker({
-  mode,
-  onDone,
-  onPick,
-}: {
-  mode: "none" | "start" | "end" | "waypoint";
-  onDone: () => void;
-  onPick: (role: "start" | "end" | "waypoint", lat: number, lon: number) => void;
-}) {
-  useMapEvents({
-    click(e) {
-      if (mode === "none") return;
-      const { lat, lng } = e.latlng;
-      onPick(mode, lat, lng);
-      onDone();
-    },
-  });
+    return () => {
+      map.off("mousemove", handleMouseMove);
+      map.off("mouseleave", handleMouseOut);
+      map.off("click", handleClick);
+    };
+  }, [elevPts, onHoverIndex, onPickIndex, pickMode, onPick, onDone, mapRef]);
+
   return null;
 }
 
 export default function MapView() {
-  // === 狀態 ===
+  // === State ===
   const [route, setRoute] = useState<LineLatLng>([]);
   const [winds, setWinds] = useState<WindPoint[]>([]);
   const [elevPts, setElevPts] = useState<ElevPoint[]>([]);
@@ -209,30 +165,30 @@ export default function MapView() {
     lat: 25.05,
     lon: 121.52,
   });
-  const [webcamFlyTarget, setWebcamFlyTarget] = useState<{ lat: number; lon: number } | null>(
-    null
-  );
+  const [zoom, setZoom] = useState<number>(13);
+  const [webcamFlyTarget, setWebcamFlyTarget] = useState<{ lat: number; lon: number } | null>(null);
   const [webcams, setWebcams] = useState<WebcamItem[]>([]);
 
-  // 起訖（[lon,lat]）
+  // Start/End [lon, lat]
   const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
   const [endLonLat, setEndLonLat] = useState<[number, number] | null>(null);
-  // 多點（中繼點，皆為 [lon,lat]）
+  // Waypoints [lon, lat]
   const [waypoints, setWaypoints] = useState<[number, number][]>([]);
 
-  // 地圖點選模式
+  // Map pick mode
   const [pickMode, setPickMode] = useState<"none" | "start" | "end" | "waypoint">("none");
 
-  // 面板互動
+  // Panel interaction
   const [cursorPt, setCursorPt] = useState<{ lat: number; lon: number } | null>(null);
   const [focusIdx, setFocusIdx] = useState<number | null>(null);
   const [panelHoverIdx, setPanelHoverIdx] = useState<number | null>(null);
 
-  // show/hide panels
+  // Show/hide panels
   const [showWebcams, setShowWebcams] = useState(true);
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
-  const [showRouteSearch, setShowRouteSearch] = useState(true);
+
+  const mapRef = useRef<MapRef | null>(null);
 
   const focusPt = useMemo(() => {
     if (focusIdx == null || !elevPts[focusIdx]) return null;
@@ -240,7 +196,7 @@ export default function MapView() {
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
 
-  // === URL 讀/寫 ===
+  // === URL Read/Write ===
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -269,38 +225,31 @@ export default function MapView() {
     router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
   };
 
-  // 取得單一「兩點間」的 ORS 路徑（相容你現有 /api/route：只吃 {start,end}）
+  // Fetch single leg coordinates using Mapbox Directions API
   async function fetchLegCoords(
     a: [number, number],
     b: [number, number]
   ): Promise<[number, number][]> {
-    const r = await fetchJSON<OrsAPIResponse | OrsAPIResponseFeature>("/api/route", {
+    const r = await fetchJSON<{ geometry: { type: string; coordinates: [number, number][] } }>("/api/mapbox-route", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // 仍然用 {start, end}，不改你的 API 介面
-      body: JSON.stringify({ start: a, end: b, profile: "cycling-regular" }),
+      body: JSON.stringify({ start: a, end: b, profile: "cycling" }),
       timeoutMs: 45000,
     });
-    const coordsRaw =
-      (r as OrsAPIResponseFeature)?.features?.[0]?.geometry?.coordinates ??
-      (r as OrsAPIResponse)?.geometry?.coordinates ??
-      [];
-    // 過濾奇怪點位
+    const coordsRaw = r?.geometry?.coordinates ?? [];
     return coordsRaw.filter(([lon, lat]) => isValidCoordinate(lat, lon));
   }
 
-  // 多點規劃：把 [start, ...waypoints, end] 拆成多個 legs 逐段呼叫並合併
+  // Multi-point route planning
   const planRouteMulti = async (points: [number, number][]) => {
     try {
       if (points.length < 2) return;
 
-      // 合併所有 legs 幾何
       const merged: [number, number][] = [];
       for (let i = 0; i < points.length - 1; i++) {
         const leg = await fetchLegCoords(points[i], points[i + 1]);
         if (!leg.length) continue;
         if (merged.length) {
-          // 移除重複接點
           merged.push(...leg.slice(1));
         } else {
           merged.push(...leg);
@@ -314,11 +263,11 @@ export default function MapView() {
         return;
       }
 
-      // 設定 route（轉為 [lat,lon]）
+      // Set route (convert to [lat, lon])
       const line: [number, number][] = merged.map(([lon, lat]) => [lat, lon]);
       setRoute(line);
 
-      // 風：抽樣 ~40 點
+      // Wind: sample ~40 points
       const step = Math.max(1, Math.floor(merged.length / 40));
       const sample = merged.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon]);
       const last = merged[merged.length - 1];
@@ -338,7 +287,7 @@ export default function MapView() {
         setWinds([]);
       }
 
-      // 高程（~300m 間距）
+      // Elevation (~300m intervals)
       try {
         const elevData = await fetchJSON<{ points: ElevPoint[] }>("/api/elevation", {
           method: "POST",
@@ -351,11 +300,11 @@ export default function MapView() {
         setElevPts([]);
       }
 
-      // 視野置中
+      // Center view
       const mid = line[Math.floor(line.length / 2)];
       if (mid) setMapCenter({ lat: mid[0], lon: mid[1] });
 
-      // 清掉互動狀態
+      // Clear interaction state
       setCursorPt(null);
       setFocusIdx(null);
       setPanelHoverIdx(null);
@@ -364,7 +313,7 @@ export default function MapView() {
     }
   };
 
-  // 只要起訖都有就規劃；waypoints 變更也會更新
+  // Plan route when start/end change
   useEffect(() => {
     if (startLonLat && endLonLat) {
       const all: [number, number][] = [startLonLat, ...waypoints, endLonLat];
@@ -373,9 +322,7 @@ export default function MapView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startLonLat, endLonLat, JSON.stringify(waypoints)]);
 
-  const centerPos = useMemo<[number, number]>(() => [mapCenter.lat, mapCenter.lon], [mapCenter]);
-
-  // 右上搜尋卡片：Find route（若只輸入文字）
+  // Handle route search submit
   const handleSubmit = async (startText: string, endText: string) => {
     const geocodeOne = async (q: string) => {
       if (!q.trim()) return null;
@@ -391,7 +338,7 @@ export default function MapView() {
       if (!r.ok) return null;
       const j = (await r.json()) as { items?: Array<{ lat: number; lon: number }> };
       const it = j.items?.[0];
-      return it ? ([it.lon, it.lat] as [number, number]) : null; // [lon,lat]
+      return it ? ([it.lon, it.lat] as [number, number]) : null;
     };
 
     const s = startLonLat ?? (await geocodeOne(startText));
@@ -403,7 +350,7 @@ export default function MapView() {
     void planRouteMulti([s, ...waypoints, e]);
   };
 
-  // 清除路線
+  // Clear route
   const handleClearRoute = () => {
     setStartLonLat(null);
     setEndLonLat(null);
@@ -413,9 +360,190 @@ export default function MapView() {
     setElevPts([]);
   };
 
+  // Fly to target
+  useEffect(() => {
+    if (!mapRef.current || !focusPt) return;
+    const map = mapRef.current.getMap();
+    map.flyTo({
+      center: [focusPt.lon, focusPt.lat],
+      zoom: Math.max(map.getZoom(), 14),
+      duration: 800,
+    });
+  }, [focusPt]);
+
+  useEffect(() => {
+    if (!mapRef.current || !webcamFlyTarget) return;
+    const map = mapRef.current.getMap();
+    map.flyTo({
+      center: [webcamFlyTarget.lon, webcamFlyTarget.lat],
+      zoom: Math.max(map.getZoom(), 14),
+      duration: 800,
+    });
+  }, [webcamFlyTarget]);
+
+  const routeGeoJSON = useMemo(() => {
+    if (route.length < 2) return null;
+    return {
+      type: "Feature" as const,
+      geometry: {
+        type: "LineString" as const,
+        coordinates: route.map(([lat, lon]) => [lon, lat]),
+      },
+      properties: {},
+    };
+  }, [route]);
+
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
-      {/* 左上：Webcams 側欄 */}
+      <Map
+        ref={mapRef}
+        initialViewState={{
+          longitude: mapCenter.lon,
+          latitude: mapCenter.lat,
+          zoom: zoom,
+        }}
+        style={{ width: "100%", height: "100%" }}
+        mapStyle="mapbox://styles/mapbox/outdoors-v12"
+        mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
+        onMove={(evt) => {
+          setMapCenter({ lat: evt.viewState.latitude, lon: evt.viewState.longitude });
+          setZoom(evt.viewState.zoom);
+        }}
+      >
+        <NavigationControl position="top-left" />
+
+        <MapInteraction
+          mapRef={mapRef}
+          elevPts={elevPts}
+          onPickIndex={(idx) => {
+            if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx));
+          }}
+          onHoverIndex={(idx) => {
+            setPanelHoverIdx((p) => (p === idx ? p : idx));
+          }}
+          pickMode={pickMode}
+          onPick={(role, lat, lon) => {
+            const v: [number, number] = [lon, lat];
+            if (role === "start") {
+              setStartLonLat(v);
+              writeQuery(v, endLonLat);
+            } else if (role === "end") {
+              setEndLonLat(v);
+              writeQuery(startLonLat, v);
+            } else {
+              setWaypoints((prev) => [...prev, v]);
+            }
+            const s = role === "start" ? v : startLonLat;
+            const e = role === "end" ? v : endLonLat;
+            const wps = role === "waypoint" ? [...waypoints, v] : waypoints;
+            if (s && e) void planRouteMulti([s, ...wps, e]);
+          }}
+          onDone={() => setPickMode("none")}
+        />
+
+        {/* Start marker */}
+        {startLonLat && (
+          <Marker longitude={startLonLat[0]} latitude={startLonLat[1]} color="#22c55e" />
+        )}
+
+        {/* End marker */}
+        {endLonLat && (
+          <Marker longitude={endLonLat[0]} latitude={endLonLat[1]} color="#ef4444" />
+        )}
+
+        {/* Waypoint markers */}
+        {waypoints.map(([lon, lat], i) => (
+          <Marker
+            key={`wp-${i}`}
+            longitude={lon}
+            latitude={lat}
+            color="#f59e0b"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setWaypoints((prev) => prev.filter((_, idx) => idx !== i));
+            }}
+          />
+        ))}
+
+        {/* Webcam markers */}
+        {webcams.map((w) => (
+          <Marker
+            key={`cam-${w.id || w.lat.toFixed(5)}-${w.lon.toFixed(5)}`}
+            longitude={w.lon}
+            latitude={w.lat}
+            color="#0284c7"
+          />
+        ))}
+
+        {/* Route line */}
+        {routeGeoJSON && (
+          <Source id="route" type="geojson" data={routeGeoJSON}>
+            <Layer
+              id="route-line"
+              type="line"
+              paint={{
+                "line-color": "#3b82f6",
+                "line-width": 3,
+              }}
+            />
+          </Source>
+        )}
+
+        {/* Route with wind coloring */}
+        {route.length > 0 && (
+          <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />
+        )}
+
+        {/* Cursor highlight */}
+        {cursorPt && (
+          <Source
+            id="cursor-point"
+            type="geojson"
+            data={{
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [cursorPt.lon, cursorPt.lat] },
+              properties: {},
+            }}
+          >
+            <Layer
+              id="cursor-point-layer"
+              type="circle"
+              paint={{
+                "circle-radius": 6,
+                "circle-color": "#a5b4fc",
+                "circle-stroke-color": "#6366f1",
+                "circle-stroke-width": 2,
+              }}
+            />
+          </Source>
+        )}
+
+        {/* Focus highlight */}
+        {focusPt && (
+          <Source
+            id="focus-point"
+            type="geojson"
+            data={{
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [focusPt.lon, focusPt.lat] },
+              properties: {},
+            }}
+          >
+            <Layer
+              id="focus-point-layer"
+              type="circle"
+              paint={{
+                "circle-radius": 7,
+                "circle-color": "#60a5fa",
+                "circle-stroke-color": "#1d4ed8",
+                "circle-stroke-width": 3,
+              }}
+            />
+          </Source>
+        )}
+      </Map>
+
+      {/* Left top: Webcams panel */}
       <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1400 }}>
         {showWebcams ? (
           <div
@@ -425,14 +553,13 @@ export default function MapView() {
               borderRadius: 8,
               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: 6,
-              filter: "none",
             }}
           >
             <div
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
             >
               <span style={{ fontWeight: 600 }}>Webcams</span>
-              <button onClick={() => setShowWebcams(false)} style={{ fontSize: 12 }}>
+              <button onClick={() => setShowWebcams(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
                 ✖
               </button>
             </div>
@@ -446,241 +573,29 @@ export default function MapView() {
             />
           </div>
         ) : (
-          <button onClick={() => setShowWebcams(true)} style={{ fontSize: 12, padding: "2px 6px" }}>
+          <button onClick={() => setShowWebcams(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
             Show Webcams
           </button>
         )}
       </div>
 
-      {/* 右上：Route search（含地圖點選工具列 + Clear） */}
-      <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1300, width: 300 }}>
-        {showRouteSearch ? (
-        <div
-          style={{
-            background: "rgba(255,255,255,0.95)",
-            color: "#1e293b",
-            border: "1px solid #e5e7eb",
-            borderRadius: 8,
-            padding: 10,
-            boxShadow: "0 6px 16px rgba(0,0,0,0.15)",
-            filter: "none",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <span style={{ fontWeight: 700 }}>Route Search</span>
-            <button onClick={() => setShowRouteSearch(false)} style={{ fontSize: 12, color: "#1e293b" }}>✖</button>
-          </div>
-          {/* <div style={{ fontWeight: 700, marginBottom: 6 }}>Route search</div> */}
-          <GeocodeSearch
-            center={mapCenter}
-            onPick={(role: Role, lat: number, lon: number) => {
-              const v: [number, number] = [lon, lat];
-              if (role === "start") {
-                setStartLonLat(v);
-                writeQuery(v, endLonLat);
-              } else {
-                setEndLonLat(v);
-                writeQuery(startLonLat, v);
-              }
-            }}
-            onSubmit={handleSubmit}
-          />
-          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={() => setPickMode((m) => (m === "start" ? "none" : "start"))}
-              style={{
-                fontSize: 12,
-                color: "#1e293b",
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid #d1d5db",
-                background: pickMode === "start" ? "#e0f2fe" : "#fff",
-              }}
-              title="Click on map to set START"
-            >
-              Pick Start on map
-            </button>
-            <button
-              onClick={() => setPickMode((m) => (m === "end" ? "none" : "end"))}
-              style={{
-                fontSize: 12, 
-                color: "#1e293b",
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid #d1d5db",
-                background: pickMode === "end" ? "#fee2e2" : "#fff",
-              }}
-              title="Click on map to set END"
-            >
-              Pick End on map
-            </button>
-            <button
-              onClick={() => setPickMode((m) => (m === "waypoint" ? "none" : "waypoint"))}
-              style={{
-                fontSize: 12, 
-                color: "#1e293b",
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid #d1d5db",
-                background: pickMode === "waypoint" ? "#dcfce7" : "#fff",
-              }}
-              title="Click on map to add waypoint"
-            >
-              Add Waypoint on map
-            </button>
-            <button
-              onClick={handleClearRoute}
-              style={{
-                fontSize: 12, 
-                color: "#1e293b",
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid #fecaca",
-                background: "#fee2e2",
-              }}
-              title="Clear route"
-            >
-              Clear route
-            </button>
-          </div>
+      {/* Mapbox Directions Control */}
+      <MapboxDirectionsControl
+        mapRef={mapRef}
+        onRoute={(coords) => {
+          if (coords.length > 0) {
+            const reversed = coords.map(([lat, lon]) => [lon, lat] as [number, number]);
+            setRoute(reversed as LineLatLng);
+            writeQuery(
+              [reversed[0][0], reversed[0][1]] as [number, number],
+              [reversed[reversed.length - 1][0], reversed[reversed.length - 1][1]] as [number, number]
+            );
+          }
+        }}
+      />
 
-          {/* 簡易顯示 waypoints 數量 */}
-          {waypoints.length > 0 && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#334155" }}>
-              Waypoints: {waypoints.length}
-            </div>
-          )}
-        </div>
-          ): (
-          <button
-            onClick={() => setShowRouteSearch(true)}
-            style={{
-              fontSize: 12,
-              padding: "4px 8px",
-              background: "rgba(255,255,255,0.9)",
-              border: "1px solid #d1d5db",
-              borderRadius: 6,
-              color: "#1e293b",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-            }}
-          >
-            Show Route Search
-          </button>
-        )}
-      </div>
-
-      <MapContainer center={centerPos} zoom={13} style={{ height: "100%", width: "100%" }}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <MapCenterTracker onChange={setMapCenter} />
-
-        {/* 地圖點選（起 / 訖 / waypoint） */}
-        <MapClickPicker
-          mode={pickMode}
-          onDone={() => setPickMode("none")}
-          onPick={(role, lat, lon) => {
-            const v: [number, number] = [lon, lat];
-            if (role === "start") {
-              setStartLonLat(v);
-              writeQuery(v, endLonLat);
-            } else if (role === "end") {
-              setEndLonLat(v);
-              writeQuery(startLonLat, v);
-            } else {
-              setWaypoints((prev) => [...prev, v]);
-            }
-            // 若起訖都存在 → 規劃
-            const s = role === "start" ? v : startLonLat;
-            const e = role === "end" ? v : endLonLat;
-            const wps = role === "waypoint" ? [...waypoints, v] : waypoints;
-            if (s && e) void planRouteMulti([s, ...wps, e]);
-          }}
-        />
-
-        {/* 起訖 marker */}
-        {startLonLat && (
-          <Marker position={[startLonLat[1], startLonLat[0]]}>
-            <Popup>Start</Popup>
-          </Marker>
-        )}
-        {endLonLat && (
-          <Marker position={[endLonLat[1], endLonLat[0]]}>
-            <Popup>End</Popup>
-          </Marker>
-        )}
-
-        {/* Waypoints 標記 */}
-        {waypoints.map(([lon, lat], i) => (
-          <Marker key={`wp-${i}`} position={[lat, lon]}>
-            <Popup>Waypoint {i + 1}</Popup>
-          </Marker>
-        ))}
-
-        {/* Webcams markers（恢復顯示） */}
-        {webcams.map((w, i) => (
-          <CircleMarker
-            key={`cam-${w.id || i}-${w.lat.toFixed(5)}-${w.lon.toFixed(5)}`}
-            center={[w.lat, w.lon]}
-            radius={5}
-            pathOptions={{ color: "#051e41ff", weight: 2, fillColor: "#1265daff", fillOpacity: 0.9 }}
-          >
-            <Popup>
-              <div style={{ minWidth: 160 }}>
-                <div style={{ fontWeight: 600 }}>{w.title || "Webcam"}</div>
-                <div style={{ color: "#6b7280", fontSize: 12 }}>
-                  {w.city || w.region || w.country || "—"}
-                </div>
-                <div style={{ color: "#64748b", fontSize: 11, marginTop: 4 }}>
-                  {(w.distance / 1000).toFixed(1)} km away
-                </div>
-                <div style={{ marginTop: 6 }}>
-                  <a href={w.detailUrl} target="_blank" rel="noreferrer">
-                    View on Windy
-                  </a>
-                </div>
-              </div>
-            </Popup>
-          </CircleMarker>
-        ))}
-
-        {/* Map ↔ Elevation 互動 */}
-        <MapEventsBridge
-          elevPts={elevPts}
-          onPickIndex={(idx) => {
-            if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx));
-          }}
-          onHoverIndex={(idx) => {
-            setPanelHoverIdx((p) => (p === idx ? p : idx));
-          }}
-        />
-
-        {/* 分段上色路線 */}
-        {route.length > 0 && (
-          <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />
-        )}
-
-        {/* 外部 hover/selected 的地圖高亮 */}
-        {cursorPt && (
-          <CircleMarker
-            center={[cursorPt.lat, cursorPt.lon]}
-            radius={6}
-            pathOptions={{ color: "#6366f1", weight: 2, fillColor: "#a5b4fc", fillOpacity: 0.8 }}
-          />
-        )}
-        {focusPt && (
-          <CircleMarker
-            center={[focusPt.lat, focusPt.lon]}
-            radius={7}
-            pathOptions={{ color: "#1d4ed8", weight: 3, fillColor: "#60a5fa", fillOpacity: 0.9 }}
-          />
-        )}
-
-        {/* 飛到選中點 / webcam 目標 */}
-        <FlyToOnPoint target={focusPt} minZoom={14} duration={0.8} />
-        <FlyToOnPoint target={webcamFlyTarget} minZoom={14} duration={0.8} />
-      </MapContainer>
-
-      {/* 右上：分段長度（略往下，避免與搜尋卡片重疊） */}
-      <div style={{ position: "absolute", right: 12, top: 12 + 300, zIndex: 1200 }}>
+      {/* Right middle: Segments */}
+      <div style={{ position: "absolute", right: 12, top: 320, zIndex: 1200 }}>
         {showSegments ? (
           <div
             style={{
@@ -689,32 +604,31 @@ export default function MapView() {
               borderRadius: 8,
               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: 6,
-              filter: "none",
             }}
           >
             <div
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
             >
               <span style={{ fontWeight: 600 }}>Segments</span>
-              <button onClick={() => setShowSegments(false)} style={{ fontSize: 12 }}>
+              <button onClick={() => setShowSegments(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
                 ✖
               </button>
             </div>
             <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
           </div>
         ) : (
-          <button onClick={() => setShowSegments(true)} style={{ fontSize: 12, padding: "2px 6px" }}>
+          <button onClick={() => setShowSegments(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
             Show Segments
           </button>
         )}
       </div>
 
-      {/* 右下：風速圖例 */}
+      {/* Right bottom: Wind legend */}
       <div style={{ fontSize: 12, color: "#1e293b", position: "absolute", right: 12, bottom: 12, zIndex: 1200 }}>
         <WindLegend />
       </div>
 
-      {/* 左下：坡面圖 */}
+      {/* Left bottom: Elevation panel */}
       <div style={{ position: "absolute", left: 65, bottom: 12, zIndex: 1200 }}>
         {showElevation ? (
           <div
@@ -724,14 +638,15 @@ export default function MapView() {
               borderRadius: 8,
               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: 6,
-              filter: "none",
+              maxHeight: "60vh",
+              overflowY: "auto",
             }}
           >
             <div
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
             >
               <span style={{ fontWeight: 600 }}>Elevation</span>
-              <button onClick={() => setShowElevation(false)} style={{ fontSize: 12 }}>
+              <button onClick={() => setShowElevation(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
                 ✖
               </button>
             </div>
@@ -753,7 +668,7 @@ export default function MapView() {
             />
           </div>
         ) : (
-          <button onClick={() => setShowElevation(true)} style={{ fontSize: 12, padding: "2px 6px" }}>
+          <button onClick={() => setShowElevation(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
             Show Elevation
           </button>
         )}

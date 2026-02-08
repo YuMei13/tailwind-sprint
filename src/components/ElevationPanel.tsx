@@ -258,7 +258,7 @@ export default function ElevationPanel({
               cx={x(series.dist[displayHoverIdx])}
               cy={y(series.elev[displayHoverIdx])}
               r={3}
-              fill="#1d4e8"
+              fill="#3b82f6"
             />
             </>
           )}

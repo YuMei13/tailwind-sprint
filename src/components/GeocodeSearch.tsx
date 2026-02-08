@@ -142,8 +142,7 @@ export default function GeocodeSearch({ onPick, onSubmit, center, defaultStart, 
           onChange={(e) => setStartQ(e.target.value)}
           onKeyDown={(e) => onKey("start", startList, e)}
           placeholder="e.g., 台北車站 / Taipei Main Station"
-          // style={box.input}
-          
+          style={box.input}
         />
         {startList.length > 0 && renderList("start", startList)}
       </div>
@@ -155,7 +154,7 @@ export default function GeocodeSearch({ onPick, onSubmit, center, defaultStart, 
           onChange={(e) => setEndQ(e.target.value)}
           onKeyDown={(e) => onKey("end", endList, e)}
           placeholder="e.g., 淡水老街 / Tamsui Old Street"
-          // style={box.input}
+          style={box.input}
         />
         {endList.length > 0 && renderList("end", endList)}
       </div>

@@ -1,9 +1,9 @@
+// src/components/RouteWindLayer.tsx
 "use client";
-import { Marker, Polyline, Popup } from "react-leaflet";
+import { Source, Layer, Marker } from "react-map-gl";
 import { windToColor } from "@/lib/wind";
 import { getArrowIcon } from "@/lib/windIcons";
 import { haversine } from "@/lib/geo";
-import L from "leaflet";
 
 export type WindPoint = {
   lat: number;
@@ -98,10 +98,43 @@ export default function RouteWindLayer({
 }: Props) {
   if (!Array.isArray(route) || route.length < 2) return null;
 
+  // Debug: Log wind data
+  if (winds.length > 0 && typeof window !== 'undefined') {
+    const windSpeeds = winds
+      .filter((w) => typeof w.speedKmh === 'number')
+      .map((w) => ({
+        speedKmh: w.speedKmh,
+        speedMs: (w.speedKmh! / 3.6).toFixed(2),
+      }));
+    console.log('[Wind Debug] Received winds:', { count: winds.length, samples: windSpeeds.slice(0, 5) });
+  }
+
   const cum = cumulativeDistances(route);
   const total = cum[cum.length - 1];
+  
   if (!Number.isFinite(total) || total <= 0) {
-    return <Polyline positions={route} pathOptions={{ color: FALLBACK_COLOR, weight }} />;
+    // Fallback: render simple route line
+    const geojson = {
+      type: "Feature" as const,
+      geometry: {
+        type: "LineString" as const,
+        coordinates: route.map((pt: LatLng) => [pt[1], pt[0]]),
+      },
+      properties: {},
+    };
+
+    return (
+      <Source id="fallback-route" type="geojson" data={geojson}>
+        <Layer
+          id="fallback-route-line"
+          type="line"
+          paint={{
+            "line-color": FALLBACK_COLOR,
+            "line-width": weight,
+          }}
+        />
+      </Source>
+    );
   }
 
   const segLen = Math.max(50, segmentMeters);
@@ -121,7 +154,18 @@ export default function RouteWindLayer({
     arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : undefined
   );
 
-  const segments: { pts: LatLng[]; color: string }[] = [];
+  // Debug: Log segment averages
+  if (typeof window !== 'undefined' && segAvg.some((v) => v !== undefined)) {
+    const avgWinds = segAvg.filter((v) => v !== undefined);
+    console.log('[Wind Debug] Segment averages (m/s):', {
+      min: Math.min(...avgWinds),
+      max: Math.max(...avgWinds),
+      avg: (avgWinds.reduce((a, b) => a + b, 0) / avgWinds.length).toFixed(2),
+      count: avgWinds.length,
+    });
+  }
+
+  const segments: { pts: LatLng[]; color: string; idx: number }[] = [];
   for (let k = 0; k < segCount; k++) {
     const d0 = k * segLen;
     const d1 = Math.min(total, (k + 1) * segLen);
@@ -131,38 +175,83 @@ export default function RouteWindLayer({
     const sp = segAvg[k];
     const color = typeof sp === "number" ? windToColor(sp) : FALLBACK_COLOR;
 
-    segments.push({ pts, color });
+    segments.push({ pts, color, idx: k });
   }
 
   return (
     <>
       {segments.length > 0 ? (
-        segments.map((s, i) => (
-          <Polyline key={`seg-${i}`} positions={s.pts} pathOptions={{ color: s.color, weight }} />
-        ))
+        segments.map((s) => {
+          const geojson = {
+            type: "Feature" as const,
+            geometry: {
+              type: "LineString" as const,
+              coordinates: s.pts.map((pt: LatLng) => [pt[1], pt[0]]),
+            },
+            properties: {},
+          };
+
+          return (
+            <Source
+              key={`seg-${s.idx}`}
+              id={`segment-${s.idx}`}
+              type="geojson"
+              data={geojson}
+            >
+              <Layer
+                id={`segment-line-${s.idx}`}
+                type="line"
+                paint={{
+                  "line-color": s.color,
+                  "line-width": weight,
+                }}
+              />
+            </Source>
+          );
+        })
       ) : (
-        <Polyline positions={route} pathOptions={{ color: FALLBACK_COLOR, weight }} />
+        <Source
+          id="fallback-route-2"
+          type="geojson"
+          data={{
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: route.map((pt: LatLng) => [pt[1], pt[0]]),
+            },
+            properties: {},
+          }}
+        >
+          <Layer
+            id="fallback-route-line-2"
+            type="line"
+            paint={{
+              "line-color": FALLBACK_COLOR,
+              "line-width": weight,
+            }}
+          />
+        </Source>
       )}
 
-      {/* ➤➤ 渲染風向箭頭 */}
+      {/* Render wind direction arrows */}
       {winds.map((w, i) => {
         if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon)) return null;
         if (typeof w.dirDeg !== "number" || typeof w.speedKmh !== "number") return null;
 
         const icon = getArrowIcon(w.dirDeg, 60);
+        
         return (
           <Marker
             key={`wind-${i}`}
-            position={[w.lat, w.lon]}
-            icon={icon}
+            longitude={w.lon}
+            latitude={w.lat}
           >
-            {Number.isFinite(w.speedKmh) && (
-              <Popup>
-                <div>風速:{w.speedKmh?.toFixed(1)} km/h</div>
-              </Popup>
-            )}  
-          </Marker> 
-          
+            <div
+              title={`Wind speed: ${w.speedKmh?.toFixed(1)} km/h`}
+              dangerouslySetInnerHTML={{ __html: icon }}
+              style={{ cursor: "pointer" }}
+            />
+          </Marker>
         );
       })}
     </>
