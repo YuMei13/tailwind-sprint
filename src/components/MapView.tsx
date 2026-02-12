@@ -4,6 +4,7 @@
 import Map, { Marker, Source, Layer, NavigationControl, MapRef } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { MapMouseEvent } from "mapbox-gl";
 import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWindLayer";
 import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
@@ -134,7 +135,7 @@ function MapInteraction({
     if (!mapRef.current) return;
     const map = mapRef.current.getMap();
     
-    const handleMouseMove = (e: any) => {
+    const handleMouseMove = (e: MapMouseEvent) => {
       const { lng, lat } = e.lngLat;
       if (rafRef.current != null) return;
       rafRef.current = requestAnimationFrame(() => {
@@ -152,7 +153,7 @@ function MapInteraction({
       onHoverIndex(null);
     };
 
-    const handleClick = (e: any) => {
+    const handleClick = (e: MapMouseEvent) => {
       const { lng, lat } = e.lngLat;
       
       if (pickMode !== "none") {
@@ -277,8 +278,10 @@ export default function MapView() {
   const writeQuery = (start: [number, number] | null, end: [number, number] | null) => {
     const sp = new URLSearchParams(searchParams.toString());
     const fmt = (p: [number, number]) => `${p[1].toFixed(6)},${p[0].toFixed(6)}`; // lat,lon
-    start ? sp.set("start", fmt(start)) : sp.delete("start");
-    end ? sp.set("end", fmt(end)) : sp.delete("end");
+    if (start) sp.set("start", fmt(start));
+    else sp.delete("start");
+    if (end) sp.set("end", fmt(end));
+    else sp.delete("end");
     router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
   };
 
@@ -468,45 +471,6 @@ export default function MapView() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startLonLat, endLonLat, JSON.stringify(waypoints)]);
-
-  // Handle route search submit
-  const handleSubmit = async (startText: string, endText: string) => {
-    const geocodeOne = async (q: string) => {
-      if (!q.trim()) return null;
-      const p = new URLSearchParams({
-        q,
-        limit: "1",
-        lang: "zh-TW",
-        "boundary.country": "TW",
-        "focus.lat": String(mapCenter.lat),
-        "focus.lon": String(mapCenter.lon),
-      });
-      const r = await fetch(`/api/geocode?${p.toString()}`, { cache: "no-store" });
-      if (!r.ok) return null;
-      const j = (await r.json()) as { items?: Array<{ lat: number; lon: number }> };
-      const it = j.items?.[0];
-      return it ? ([it.lon, it.lat] as [number, number]) : null;
-    };
-
-    const s = startLonLat ?? (await geocodeOne(startText));
-    const e = endLonLat ?? (await geocodeOne(endText));
-    if (!s || !e) return;
-    setStartLonLat(s);
-    setEndLonLat(e);
-    writeQuery(s, e);
-    void planRouteMulti([s, ...waypoints, e]);
-  };
-
-  // Clear route
-  const handleClearRoute = () => {
-    setStartLonLat(null);
-    setEndLonLat(null);
-    setWaypoints([]);
-    setRoute([]);
-    setWinds([]);
-    setElevPts([]);
-    setRouteDebug(null);
-  };
 
   // Fly to target
   useEffect(() => {

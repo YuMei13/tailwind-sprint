@@ -11,6 +11,6 @@ declare module "@mapbox/mapbox-gl-directions" {
         profileSwitcher?: boolean;
       };
     });
-    addTo(map: any): void;
+    addTo(map: unknown): void;
   }
 }
