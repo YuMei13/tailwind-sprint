@@ -1,6 +1,7 @@
 // src/components/WebcamsPanel.tsx
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 
 export type WebcamItem = {
   id?: string | number;
@@ -103,7 +104,14 @@ export default function WebcamsPanel({
             <div key={`${w.id ?? `${w.lat},${w.lon}`}`} style={{ display: "flex", gap: 8, borderBottom: "1px solid #f1f5f9", paddingBottom: 8 }}>
               <div style={{ width: 96, height: 64, borderRadius: 6, overflow: "hidden", background: "#f1f5f9", flex: "0 0 auto" }}>
                 {img ? (
-                  <img src={img} alt={w.title ?? "webcam"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <Image
+                    src={img}
+                    alt={w.title ?? "webcam"}
+                    width={96}
+                    height={64}
+                    unoptimized
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
                 ) : (
                   <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", color: "#94a3b8", fontSize: 12 }}>no preview</div>
                 )}

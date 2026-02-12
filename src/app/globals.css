@@ -40,3 +40,25 @@ a {
     color-scheme: dark;
   }
 }
+
+/* Mapbox Directions Control - Ensure visibility */
+.mapboxgl-ctrl-top-right {
+  z-index: 2000 !important;
+  /* allow clicks to pass through wrapper so map remains interactive */
+  pointer-events: none;
+}
+
+.mapboxgl-ctrl {
+  z-index: 999 !important;
+}
+
+.mapbox-gl-directions {
+  z-index: 10001 !important;
+  /* Ensure the directions panel itself receives pointer events and is fixed above the map */
+  pointer-events: auto;
+  max-width: 380px;
+  position: fixed !important;
+  top: 12px !important;
+  right: 12px !important;
+}
+

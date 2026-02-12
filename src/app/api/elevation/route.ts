@@ -20,20 +20,51 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// === 沿著路線每隔 stepMeters 取樣 ===
+function isValidLonLat(p: unknown): p is LonLat {
+  return (
+    Array.isArray(p) &&
+    p.length === 2 &&
+    Number.isFinite(p[0]) &&
+    Number.isFinite(p[1]) &&
+    Math.abs(p[0]) <= 180 &&
+    Math.abs(p[1]) <= 90
+  );
+}
+
+function toLonLat(p: [number, number]): LonLat | null {
+  const [a, b] = p;
+  const asLonLat = Math.abs(a) <= 180 && Math.abs(b) <= 90;
+  const asLatLon = Math.abs(a) <= 90 && Math.abs(b) <= 180;
+  if (asLonLat && !asLatLon) return [a, b];
+  if (asLatLon) return [b, a];
+  return null;
+}
+
+// === 沿著路線每隔 stepMeters 取樣（固定距離，不跟隨原始點密度） ===
 function interpolateAlongPath(coords: LonLat[], stepMeters: number): LonLat[] {
   if (coords.length < 2) return coords;
   const result: LonLat[] = [coords[0]];
+  let nextDist = stepMeters;
+  let traversed = 0;
+
   for (let i = 0; i < coords.length - 1; i++) {
     const [lon1, lat1] = coords[i];
     const [lon2, lat2] = coords[i + 1];
     const segLen = haversineMeters(lat1, lon1, lat2, lon2);
-    const n = Math.max(1, Math.floor(segLen / stepMeters));
-    for (let k = 1; k <= n; k++) {
-      const t = k / n;
+    if (!Number.isFinite(segLen) || segLen <= 0) continue;
+
+    while (traversed + segLen >= nextDist) {
+      const t = (nextDist - traversed) / segLen;
       result.push([lon1 + (lon2 - lon1) * t, lat1 + (lat2 - lat1) * t]);
+      nextDist += stepMeters;
     }
+
+    traversed += segLen;
   }
+
+  const last = coords[coords.length - 1];
+  const tail = result[result.length - 1];
+  if (!tail || tail[0] !== last[0] || tail[1] !== last[1]) result.push(last);
   return result;
 }
 
@@ -57,18 +88,82 @@ async function fetchElevBatch(points: LonLat[], dataset: string, timeoutMs = 200
   return out.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && Number.isFinite(p.elevation));
 }
 
+// === Fallback: Open-Meteo elevation API ===
+async function fetchElevBatchFallback(points: LonLat[], timeoutMs = 20000) {
+  if (!points.length) return [];
+  const latitudes = points.map(([, lat]) => lat.toFixed(6)).join(",");
+  const longitudes = points.map(([lon]) => lon.toFixed(6)).join(",");
+  const url = `https://api.open-meteo.com/v1/elevation?latitude=${latitudes}&longitude=${longitudes}`;
+  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) throw new Error(`OpenMeteo ${res.status}`);
+  const json = (await res.json()) as { elevation?: number[] };
+  const elev = Array.isArray(json.elevation) ? json.elevation : [];
+
+  const out: ElevPt[] = points.map(([lon, lat], i) => {
+    const elevation = Number(elev[i] ?? NaN);
+    return { lat, lon, elevation };
+  });
+  return out.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && Number.isFinite(p.elevation));
+}
+
+// === Fallback: Mapbox Terrain Tilequery (contour ele) ===
+async function fetchElevBatchMapbox(points: LonLat[], timeoutMs = 20000) {
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  if (!token || !points.length) return [];
+
+  const out: ElevPt[] = [];
+  for (const [lon, lat] of points) {
+    try {
+      const url =
+        `https://api.mapbox.com/v4/mapbox.mapbox-terrain-v2/tilequery/` +
+        `${lon},${lat}.json?layers=contour&limit=1&access_token=${token}`;
+      const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) {
+        out.push({ lat, lon, error: true, msg: `mapbox terrain ${res.status}` });
+        continue;
+      }
+      const json = (await res.json()) as {
+        features?: Array<{ properties?: { ele?: number } }>;
+      };
+      const elevation = Number(json.features?.[0]?.properties?.ele ?? NaN);
+      if (Number.isFinite(elevation)) {
+        out.push({ lat, lon, elevation });
+      } else {
+        out.push({ lat, lon, error: true, msg: "mapbox terrain no elevation" });
+      }
+    } catch {
+      out.push({ lat, lon, error: true, msg: "mapbox terrain fetch failed" });
+    }
+  }
+
+  return out;
+}
+
 // === 主 API ===
 export async function POST(req: NextRequest) {
   try {
-    const { coords, intervalMeters = 50, dataset = "srtm90m" } = (await req.json()) as {
+    const { coords, points, intervalMeters = 50, dataset = "srtm90m" } = (await req.json()) as {
       coords?: LonLat[];
+      points?: [number, number][];
       intervalMeters?: number;
       dataset?: string;
     };
 
-    if (!coords || coords.length < 2) return NextResponse.json({ points: [] });
+    const routeCoords: LonLat[] = Array.isArray(coords)
+      ? coords.filter(isValidLonLat)
+      : Array.isArray(points)
+        ? points.map((p) => toLonLat(p)).filter((p): p is LonLat => p !== null)
+        : [];
 
-    const samples = interpolateAlongPath(coords, Math.max(50, intervalMeters));
+    if (routeCoords.length < 2) {
+      console.warn("Elevation API: route too short", {
+        coordsCount: Array.isArray(coords) ? coords.length : 0,
+        pointsCount: Array.isArray(points) ? points.length : 0,
+      });
+      return NextResponse.json({ points: [] });
+    }
+
+    const samples = interpolateAlongPath(routeCoords, Math.max(50, intervalMeters));
     const key = buildKey("elev", { samples, dataset });
     const nocache = req.nextUrl.searchParams.get("nocache") === "1";
 
@@ -76,7 +171,7 @@ export async function POST(req: NextRequest) {
       key,
       86400,
       async () => {
-        const batchSize = 90;
+        const batchSize = 60;
         const allPts: ElevPt[] = [];
         for (let i = 0; i < samples.length; i += batchSize) {
           const chunk = samples.slice(i, i + batchSize);
@@ -84,16 +179,46 @@ export async function POST(req: NextRequest) {
             const part = await fetchElevBatch(chunk, dataset, 20000);
             allPts.push(...part);
           } catch {
-            for (const [lon, lat] of chunk)
-              allPts.push({ lat, lon, error: true, msg: "elev fetch failed" });
+            try {
+              const part = await fetchElevBatchFallback(chunk, 20000);
+              allPts.push(...part);
+            } catch {
+              try {
+                const part = await fetchElevBatchMapbox(chunk, 20000);
+                allPts.push(...part);
+              } catch {
+                console.warn("Elevation API: chunk failed in all providers", {
+                  chunkSize: chunk.length,
+                  dataset,
+                });
+                for (const [lon, lat] of chunk) {
+                  allPts.push({ lat, lon, error: true, msg: "elev fetch failed" });
+                }
+              }
+            }
           }
         }
-        // console.log("ElevationAPI OK:", allPts.length, allPts.slice(0, 3));
+        console.warn("Elevation API: computed", {
+          routeCoords: routeCoords.length,
+          samples: samples.length,
+          returned: allPts.length,
+          valid: allPts.filter((p) => typeof p.elevation === "number").length,
+          errors: allPts.filter((p) => p.error).length,
+          dataset,
+        });
         return { points: allPts };
       },
-      nocache
+      nocache,
+      (payload) => payload.points.some((p) => typeof p.elevation === "number")
     );
 
+    console.warn("Elevation API: response sent", {
+      points: data.points.length,
+      validElevation: data.points.filter((p) => typeof p.elevation === "number").length,
+      withErrors: data.points.filter((p) => p.error).length,
+      nocache,
+      sample: data.points.slice(0, 2),
+    });
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed";
