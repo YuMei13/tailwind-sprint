@@ -36,7 +36,6 @@ type MapboxDirectionsConstructor = new (options: {
 declare global {
   interface Window {
     MapboxDirections?: MapboxDirectionsConstructor;
-    mapboxgl?: typeof mapboxgl;
   }
 }
 
@@ -78,11 +77,12 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
 
       // Check if plugin is ready
       const MapboxDir = window.MapboxDirections;
-      if (!MapboxDir || !window.mapboxgl) {
+      const hasMapboxGl = Boolean((window as unknown as { mapboxgl?: unknown }).mapboxgl);
+      if (!MapboxDir || !hasMapboxGl) {
         if (initAttemptsRef.current % 10 === 0) {
           console.warn("MapboxDirectionsControl: waiting for directions plugin", {
             hasMapboxDirections: !!MapboxDir,
-            hasWindowMapboxgl: !!window.mapboxgl,
+            hasWindowMapboxgl: hasMapboxGl,
           });
         }
         initTimerRef.current = setTimeout(attemptInit, 300);
@@ -257,7 +257,7 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
   // Load scripts once
   useEffect(() => {
     console.warn("MapboxDirectionsControl: mount");
-    window.mapboxgl = mapboxgl;
+    (window as unknown as { mapboxgl?: unknown }).mapboxgl = mapboxgl;
 
     const ensureScript = (src: string) =>
       new Promise<void>((resolve, reject) => {
