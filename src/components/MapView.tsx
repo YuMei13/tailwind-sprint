@@ -220,28 +220,6 @@ export default function MapView() {
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
 
-  useEffect(() => {
-    console.warn("MapView: mounted");
-  }, []);
-
-  useEffect(() => {
-    if (!routeDebug) return;
-    console.groupCollapsed(
-      `[routing-debug] ${routeDebug.source} incoming=${routeDebug.incomingCount} merged=${routeDebug.mergedCount}`
-    );
-    console.log("routeDebug", routeDebug);
-    console.log("sampleLonLat", routeDebug.sampleLonLat);
-    console.groupEnd();
-  }, [routeDebug]);
-
-  useEffect(() => {
-    console.warn("[MapView] elevPts updated", {
-      count: elevPts.length,
-      hasElevation: elevPts.filter((p) => typeof p.elevation === "number").length,
-      sample: elevPts.slice(0, 3),
-    });
-  }, [elevPts]);
-
   // === URL Read/Write ===
   const router = useRouter();
   const pathname = usePathname();
@@ -317,20 +295,11 @@ export default function MapView() {
     merged: [number, number][],
     meta: { source: RouteSource; incomingCount: number }
   ) => {
-    console.log("[routing] applyRouteFromLonLat:start", {
-      source: meta.source,
-      incomingCount: meta.incomingCount,
-      mergedCount: merged.length,
-      first: merged[0],
-      last: merged[merged.length - 1],
-    });
-
     // Clear old wind arrows immediately
     setWinds([]);
     setElevPts([]);
 
     if (merged.length < 2) {
-      console.warn("No valid merged coordinates");
       setRoute([]);
       setWinds([]);
       setElevPts([]);
@@ -372,7 +341,6 @@ export default function MapView() {
       });
       windPoints = Array.isArray(windData.points) ? windData.points : [];
       setWinds(windPoints);
-      console.log("[routing] wind response", { count: windPoints.length });
     } catch {
       windRequestFailed = true;
       setWinds([]);
@@ -383,11 +351,6 @@ export default function MapView() {
     let elevationPoints: ElevPoint[] = [];
     let elevationRequestFailed = false;
     try {
-      console.log("[routing] elevation request starting", {
-        mergedCount: merged.length,
-        first: merged[0],
-        last: merged[merged.length - 1],
-      });
       const elevData = await fetchJSON<{ points: ElevPoint[] }>("/api/elevation?nocache=1", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -399,12 +362,6 @@ export default function MapView() {
       if (elevationPoints.length > 0) {
         setShowElevation(true);
       }
-      console.log("[routing] elevation response", {
-        returned: elevationPoints.length,
-        valid: elevationPoints.filter((p) => typeof p.elevation === "number").length,
-        errors: elevationPoints.filter((p) => p.error).length,
-        sample: elevationPoints.slice(0, 3),
-      });
     } catch (err) {
       elevationRequestFailed = true;
       setElevPts([]);
@@ -692,10 +649,9 @@ export default function MapView() {
       </div>
 
       {/* Mapbox Directions Control */}
-      <MapboxDirectionsControl
+        <MapboxDirectionsControl
         mapRef={mapRef}
         onRoute={(coords) => {
-          console.warn("[routing] onRoute callback fired", { coordsCount: coords.length });
           if (coords.length <= 1) return;
           void (async () => {
             const mergedFromPlugin = coords
@@ -708,10 +664,6 @@ export default function MapView() {
               const mergedFromMapboxApi = await fetchRouteFromCoords(mergedFromPlugin);
               if (mergedFromMapboxApi.length > 1) {
                 merged = mergedFromMapboxApi;
-                console.warn("[routing] using mapbox-route geometry for elevation pipeline", {
-                  pluginPoints: mergedFromPlugin.length,
-                  mapboxRoutePoints: mergedFromMapboxApi.length,
-                });
               }
             } catch (e) {
               console.error("[routing] mapbox-route normalization failed, fallback to plugin geometry", e);

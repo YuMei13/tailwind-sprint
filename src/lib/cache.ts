@@ -6,8 +6,6 @@ type CacheClient =
   | { type: "redis"; client: Redis }
   | { type: "memory"; store: MemoryStore };
 const fallbackStore: MemoryStore = new Map<string, { exp: number; val: unknown }>();
-let warnedRedisRead = false;
-let warnedRedisWrite = false;
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -22,12 +20,8 @@ export async function getCache<T = unknown>(key: string): Promise<T | null> {
     try {
       const v = await client.client.get<T>(key);
       if (v != null) return v as T;
-    } catch (e) {
-      if (!warnedRedisRead) {
-        warnedRedisRead = true;
-        const msg = e instanceof Error ? e.message : String(e);
-        console.warn("Cache read fallback to memory:", msg);
-      }
+    } catch {
+      // ignore and fallback to in-memory cache
     }
     const memHit = fallbackStore.get(key);
     if (!memHit) return null;
@@ -50,12 +44,8 @@ export async function setCache<T = unknown>(key: string, value: T, ttlSec: numbe
   if (client.type === "redis") {
     try {
       await client.client.set(key, value, { ex: ttlSec });
-    } catch (e) {
-      if (!warnedRedisWrite) {
-        warnedRedisWrite = true;
-        const msg = e instanceof Error ? e.message : String(e);
-        console.warn("Cache write fallback to memory:", msg);
-      }
+    } catch {
+      // ignore and fallback to in-memory cache
       fallbackStore.set(key, { exp: Date.now() + ttlSec * 1000, val: value });
     }
   } else {

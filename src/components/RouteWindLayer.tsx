@@ -99,17 +99,6 @@ export default function RouteWindLayer({
 }: Props) {
   if (!Array.isArray(route) || route.length < 2) return null;
 
-  // Debug: Log wind data
-  if (winds.length > 0 && typeof window !== 'undefined') {
-    const windSpeeds = winds
-      .filter((w) => typeof w.speedMs === 'number' || typeof w.speedKmh === 'number')
-      .map((w) => ({
-        speedMs: typeof w.speedMs === "number" ? w.speedMs : (w.speedKmh! / 3.6),
-        speedKmh: w.speedKmh,
-      }));
-    console.log('[Wind Debug] Received winds:', { count: winds.length, samples: windSpeeds.slice(0, 5) });
-  }
-
   const cum = cumulativeDistances(route);
   const total = cum[cum.length - 1];
   
@@ -159,17 +148,6 @@ export default function RouteWindLayer({
   const segAvg: Array<number | undefined> = buckets.map((arr) =>
     arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : undefined
   );
-
-  // Debug: Log segment averages
-  if (typeof window !== 'undefined' && segAvg.some((v) => v !== undefined)) {
-    const avgWinds = segAvg.filter((v) => v !== undefined);
-    console.log('[Wind Debug] Segment averages (m/s):', {
-      min: Math.min(...avgWinds),
-      max: Math.max(...avgWinds),
-      avg: (avgWinds.reduce((a, b) => a + b, 0) / avgWinds.length).toFixed(2),
-      count: avgWinds.length,
-    });
-  }
 
   const segments: { pts: LatLng[]; color: string; idx: number }[] = [];
   for (let k = 0; k < segCount; k++) {

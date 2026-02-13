@@ -59,18 +59,12 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
       initAttemptsRef.current += 1;
       const m = mapRef.current?.getMap?.();
       if (!m) {
-        if (initAttemptsRef.current % 10 === 0) {
-          console.warn("MapboxDirectionsControl: waiting for map instance");
-        }
         initTimerRef.current = setTimeout(attemptInit, 300);
         return;
       }
       mapInstanceRef.current = m;
 
       if (!m.isStyleLoaded()) {
-        if (initAttemptsRef.current % 10 === 0) {
-          console.warn("MapboxDirectionsControl: waiting for map style");
-        }
         initTimerRef.current = setTimeout(attemptInit, 300);
         return;
       }
@@ -79,12 +73,6 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
       const MapboxDir = window.MapboxDirections;
       const hasMapboxGl = Boolean((window as unknown as { mapboxgl?: unknown }).mapboxgl);
       if (!MapboxDir || !hasMapboxGl) {
-        if (initAttemptsRef.current % 10 === 0) {
-          console.warn("MapboxDirectionsControl: waiting for directions plugin", {
-            hasMapboxDirections: !!MapboxDir,
-            hasWindowMapboxgl: hasMapboxGl,
-          });
-        }
         initTimerRef.current = setTimeout(attemptInit, 300);
         return;
       }
@@ -109,7 +97,6 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
         directionsRef.current = directions;
         m.addControl(directions, "top-right");
         isInitializedRef.current = true;
-        console.warn("MapboxDirectionsControl: initialized successfully");
 
         // Position it
         setTimeout(() => {
@@ -135,25 +122,10 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
         // Listen for routes from the directions control
         directions.on("route", (e: unknown) => {
           const ev = e as DirectionsRouteEvent;
-          console.warn("MapboxDirectionsControl: route event fired", ev);
           if (ev.route?.[0]?.geometry?.coordinates) {
             const coords = ev.route[0].geometry.coordinates.map(([lon, lat]: [number, number]) => [lat, lon] as [number, number]);
-            console.warn("MapboxDirectionsControl: route received", coords.length, {
-              first: coords[0],
-              last: coords[coords.length - 1],
-            });
             onRouteRef.current?.(coords);
-          } else {
-            console.warn("MapboxDirectionsControl: route event without coordinates");
           }
-        });
-
-        directions.on("loading", (e: unknown) => {
-          console.warn("MapboxDirectionsControl: loading event", e);
-        });
-
-        directions.on("clear", (e: unknown) => {
-          console.warn("MapboxDirectionsControl: clear event", e);
         });
 
         directions.on("error", (e: unknown) => {
@@ -190,7 +162,6 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
           if (key === lastRouteKey) return;
           lastRouteKey = key;
           try {
-            console.warn("MapboxDirectionsControl: fetching normalized route from API", { origin: o, destination: d });
             const res = await fetch("/api/mapbox-route", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -198,13 +169,9 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
             });
             const json = await res.json();
             const coordsRaw = Array.isArray(json?.geometry?.coordinates) ? json.geometry.coordinates : [];
-            if (!coordsRaw.length) {
-              console.warn("MapboxDirectionsControl: normalized route returned no coordinates", json);
-              return;
-            }
+            if (!coordsRaw.length) return;
             // map [lon, lat] -> [lat, lon] to match existing onRoute expectations
             const coords = coordsRaw.map(([lon, lat]: [number, number]) => [lat, lon] as [number, number]);
-            console.warn("MapboxDirectionsControl: normalized route ready", { count: coords.length });
             onRouteRef.current?.(coords);
           } catch (err) {
             console.error("MapboxDirectionsControl: failed to fetch normalized route", err instanceof Error ? err.message : String(err));
@@ -212,22 +179,17 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
         };
 
         directions.on("origin", (e: unknown) => {
-          console.warn("MapboxDirectionsControl: origin set", e);
           const c = extractFeatureCoord(e);
           originRef.current = c;
           void tryFetchNormalizedRoute();
         });
 
         directions.on("destination", (e: unknown) => {
-          console.warn("MapboxDirectionsControl: destination set", e);
           const c = extractFeatureCoord(e);
           destRef.current = c;
           void tryFetchNormalizedRoute();
         });
 
-        directions.on("profile", (e: unknown) => {
-          console.warn("MapboxDirectionsControl: profile changed", e);
-        });
       } catch (err) {
         console.error("MapboxDirectionsControl error:", err);
       }
@@ -256,7 +218,6 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
 
   // Load scripts once
   useEffect(() => {
-    console.warn("MapboxDirectionsControl: mount");
     (window as unknown as { mapboxgl?: unknown }).mapboxgl = mapboxgl;
 
     const ensureScript = (src: string) =>
