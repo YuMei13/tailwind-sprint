@@ -48,7 +48,7 @@ Mapbox Route API:
 
 You're all set! Your `.env.local` already has:
 ```env
-NEXT_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoieXUtbWVpIiwiYSI6ImNtbDlkNHhvdzAxbjIzZnM5ZW9tNmlvdWkifQ.o-q2m6yX_pYr5l66PlDWyg
+NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_public_token
 ```
 
 This token now handles:
