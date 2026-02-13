@@ -156,10 +156,6 @@ export async function POST(req: NextRequest) {
         : [];
 
     if (routeCoords.length < 2) {
-      console.warn("Elevation API: route too short", {
-        coordsCount: Array.isArray(coords) ? coords.length : 0,
-        pointsCount: Array.isArray(points) ? points.length : 0,
-      });
       return NextResponse.json({ points: [] });
     }
 
@@ -187,10 +183,6 @@ export async function POST(req: NextRequest) {
                 const part = await fetchElevBatchMapbox(chunk, 20000);
                 allPts.push(...part);
               } catch {
-                console.warn("Elevation API: chunk failed in all providers", {
-                  chunkSize: chunk.length,
-                  dataset,
-                });
                 for (const [lon, lat] of chunk) {
                   allPts.push({ lat, lon, error: true, msg: "elev fetch failed" });
                 }
@@ -198,27 +190,12 @@ export async function POST(req: NextRequest) {
             }
           }
         }
-        console.warn("Elevation API: computed", {
-          routeCoords: routeCoords.length,
-          samples: samples.length,
-          returned: allPts.length,
-          valid: allPts.filter((p) => typeof p.elevation === "number").length,
-          errors: allPts.filter((p) => p.error).length,
-          dataset,
-        });
         return { points: allPts };
       },
       nocache,
       (payload) => payload.points.some((p) => typeof p.elevation === "number")
     );
 
-    console.warn("Elevation API: response sent", {
-      points: data.points.length,
-      validElevation: data.points.filter((p) => typeof p.elevation === "number").length,
-      withErrors: data.points.filter((p) => p.error).length,
-      nocache,
-      sample: data.points.slice(0, 2),
-    });
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed";

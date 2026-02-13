@@ -55,7 +55,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (!coordinates || coordinates.length < 2) {
-      console.warn("Mapbox Route API: invalid input", bodyIn);
       return NextResponse.json({ error: "missing or invalid coordinates" }, { status: 400 });
     }
 
@@ -85,10 +84,6 @@ export async function POST(req: NextRequest) {
             sampled.push(useCoordinates[idx]);
           }
           useCoordinates = sampled;
-          console.warn("Mapbox Route API: downsampled coordinates to meet Mapbox limit", {
-            original: coordinates!.length,
-            used: useCoordinates.length,
-          });
         }
         const coordsStr = useCoordinates.map(([lon, lat]) => `${lon},${lat}`).join(";");
         const url = `https://api.mapbox.com/directions/v5/mapbox/${encodeURIComponent(profile)}/${coordsStr}?access_token=${MAPBOX_TOKEN}&geometries=geojson&steps=false&alternatives=false`;
@@ -110,13 +105,6 @@ export async function POST(req: NextRequest) {
         }
 
         const route = response.routes[0];
-        console.warn("Mapbox Route API: route ok", {
-          profile,
-          inputPoints: coordinates?.length ?? 0,
-          outputPoints: route.geometry.coordinates?.length ?? 0,
-          distance: route.distance,
-          duration: route.duration,
-        });
         return {
           geometry: {
             type: "LineString" as const,
@@ -127,10 +115,6 @@ export async function POST(req: NextRequest) {
       nocache
     );
 
-    console.warn("Mapbox Route API: response sent", {
-      points: data.geometry.coordinates.length,
-      nocache,
-    });
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed";
