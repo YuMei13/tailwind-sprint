@@ -7,7 +7,7 @@ Your project is now **100% functional**, but requires API keys to enable all fea
 ## Step 1: Get Mapbox Token (Already Done ✅)
 Your Mapbox token is already configured in `.env.local`:
 ```env
-NEXT_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoieXUtbWVpIiwiYSI6ImNtbDlkNHhvdzAxbjIzZnM5ZW9tNmlvdWkifQ.o-q2m6yX_pYr5l66PlDWyg
+NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_public_token
 ```
 ✅ Maps will display and work perfectly
 
@@ -99,7 +99,7 @@ UPSTASH_REDIS_REST_TOKEN=xxx
 
 ```env
 # Mapbox (Already configured)
-NEXT_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoieXUtbWVpIiwiYSI6ImNtbDlkNHhvdzAxbjIzZnM5ZW9tNmlvdWkifQ.o-q2m6yX_pYr5l66PlDWyg
+NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_public_token
 
 # OpenRouteService - REQUIRED
 ORS_API_KEY=your_ors_api_key_here
