@@ -8,7 +8,7 @@ type Props = {
   /** 地圖中心（用於搜尋） */
   center: { lat: number; lon: number };
   /** 選取單一結果（使用者點選下拉） */
-  onPick: (role: Role, lat: number, lon: number, label: string) => void;
+  onPick: (role: Role, lat: number, lon: number, label: string, wpIdx?: number) => void;
   /** 選中的起點 */
   startLatLon?: [number, number] | null;
   startLabel?: string;
@@ -16,8 +16,16 @@ type Props = {
   endLatLon?: [number, number] | null;
   endLabel?: string;
   /** 途經點 */
-  waypoints?: Array<{ label: string; latLon: [number, number] }>;
-  onWaypointsChange?: (waypoints: Array<{ label: string; latLon: [number, number] }>) => void;
+  waypoints?: Array<{ label: string; latLon?: [number, number] | null }>;
+  onWaypointsChange?: (waypoints: Array<{ label: string; latLon?: [number, number] | null }>) => void;
+  onPickOnMap?: (role: Role, wpIdx?: number) => void;
+  onMoveWaypoint?: (fromIndex: number, toIndex: number) => void;
+  onClearStart?: () => void;
+  onClearEnd?: () => void;
+  onMoveStartDown?: () => void;
+  onMoveEndUp?: () => void;
+  pickMode?: "none" | "start" | "end" | "waypoint";
+  pendingWaypointIndex?: number | null;
 };
 
 function useDebounced<T>(value: T, delay = 300) {
@@ -60,12 +68,32 @@ export default function MapboxRoutingPanel({
   endLabel: endLabelProp,
   waypoints = [],
   onWaypointsChange,
+  onPickOnMap,
+  onMoveWaypoint,
+  onClearStart,
+  onClearEnd,
+  onMoveStartDown,
+  onMoveEndUp,
+  pickMode = "none",
+  pendingWaypointIndex = null,
 }: Props) {
   const [startQ, setStartQ] = useState(startLabelProp ?? "");
   const [endQ, setEndQ] = useState(endLabelProp ?? "");
   const [waypointQueries, setWaypointQueries] = useState<string[]>(
     waypoints.map((w) => w.label)
   );
+
+  useEffect(() => {
+    setStartQ(startLabelProp ?? "");
+  }, [startLabelProp]);
+
+  useEffect(() => {
+    setEndQ(endLabelProp ?? "");
+  }, [endLabelProp]);
+
+  useEffect(() => {
+    setWaypointQueries(waypoints.map((w) => w.label));
+  }, [waypoints]);
 
   const ds = useDebounced(startQ, 300);
   const de = useDebounced(endQ, 300);
@@ -139,7 +167,7 @@ export default function MapboxRoutingPanel({
 
   const onChoose = useCallback(
     (role: Role, item: GeoItem, wpIdx?: number) => {
-      onPick(role, item.lat, item.lon, item.name);
+      onPick(role, item.lat, item.lon, item.name, wpIdx);
       if (role === "start") {
         setStartQ(item.name);
         setStartList([]);
@@ -196,6 +224,15 @@ export default function MapboxRoutingPanel({
         background: "#e0f2fe",
         color: "#0369a1",
         marginLeft: 6,
+      },
+      tinyBtn: {
+        padding: "2px 6px",
+        borderRadius: 4,
+        border: "1px solid #cbd5e1",
+        background: "#fff",
+        color: "#334155",
+        cursor: "pointer",
+        fontSize: 11,
       },
     }),
     []
@@ -269,8 +306,10 @@ export default function MapboxRoutingPanel({
   };
 
   const addWaypoint = () => {
+    const nextWaypoints = [...waypoints, { label: "", latLon: null }];
     setWaypointQueries([...waypointQueries, ""]);
     setWaypointLists([...waypointLists, []]);
+    onWaypointsChange?.(nextWaypoints);
   };
 
   const removeWaypoint = (idx: number) => {
@@ -284,10 +323,50 @@ export default function MapboxRoutingPanel({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: 100 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: 360 }}>
+      <div style={{ fontSize: 11, color: "#64748b" }}>
+        One routing panel: type places or pick directly on map.
+      </div>
       {/* Start Point */}
       <div>
-        <div style={box.label}>📍 Start</div>
+        <div style={{ ...box.label, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>📍 Start</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={onMoveStartDown}
+              disabled={!startLatLon}
+              style={{
+                ...box.tinyBtn,
+                cursor: startLatLon ? "pointer" : "not-allowed",
+                color: startLatLon ? "#334155" : "#94a3b8",
+              }}
+            >
+              Down
+            </button>
+            <button
+              onClick={onClearStart}
+              disabled={!startLatLon}
+              style={{
+                ...box.tinyBtn,
+                borderColor: "#fee2e2",
+                color: startLatLon ? "#dc2626" : "#94a3b8",
+                cursor: startLatLon ? "pointer" : "not-allowed",
+              }}
+            >
+              Remove
+            </button>
+            <button
+              onClick={() => onPickOnMap?.("start")}
+              style={{
+                ...box.tinyBtn,
+                background: pickMode === "start" ? "#dbeafe" : "#fff",
+                borderColor: pickMode === "start" ? "#93c5fd" : "#cbd5e1",
+              }}
+            >
+              Pick on map
+            </button>
+          </div>
+        </div>
         <div style={box.container}>
           <input
             value={startQ}
@@ -308,23 +387,60 @@ export default function MapboxRoutingPanel({
       {/* Waypoints */}
       {waypointQueries.map((q, i) => (
         <div key={`wp-${i}`}>
-          <div style={box.label}>
-            🚩 Waypoint {i + 1}
-            <button
-              onClick={() => removeWaypoint(i)}
-              style={{
-                marginLeft: 8,
-                padding: "0 6px",
-                borderRadius: 4,
-                border: "1px solid #fee2e2",
-                background: "#fff",
-                color: "#dc2626",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              Remove
-            </button>
+          <div style={{ ...box.label, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>
+              🚩 Stop {i + 1}
+              {pickMode === "waypoint" && pendingWaypointIndex === i ? " (click map...)" : ""}
+            </span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => onPickOnMap?.("waypoint", i)}
+                style={{
+                  ...box.tinyBtn,
+                  background: pickMode === "waypoint" && pendingWaypointIndex === i ? "#dbeafe" : "#fff",
+                  borderColor:
+                    pickMode === "waypoint" && pendingWaypointIndex === i ? "#93c5fd" : "#cbd5e1",
+                }}
+              >
+                Pick
+              </button>
+              <button
+                onClick={() => onMoveWaypoint?.(i, i - 1)}
+                disabled={i === 0}
+                style={{
+                  ...box.tinyBtn,
+                  cursor: i === 0 ? "not-allowed" : "pointer",
+                  color: i === 0 ? "#94a3b8" : "#334155",
+                }}
+              >
+                Up
+              </button>
+              <button
+                onClick={() => onMoveWaypoint?.(i, i + 1)}
+                disabled={i === waypointQueries.length - 1}
+                style={{
+                  ...box.tinyBtn,
+                  cursor: i === waypointQueries.length - 1 ? "not-allowed" : "pointer",
+                  color: i === waypointQueries.length - 1 ? "#94a3b8" : "#334155",
+                }}
+              >
+                Down
+              </button>
+              <button
+                onClick={() => removeWaypoint(i)}
+                style={{
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  border: "1px solid #fee2e2",
+                  background: "#fff",
+                  color: "#dc2626",
+                  cursor: "pointer",
+                  fontSize: 11,
+                }}
+              >
+                Remove
+              </button>
+            </div>
           </div>
           <div style={box.container}>
             <input
@@ -338,6 +454,11 @@ export default function MapboxRoutingPanel({
               placeholder="Waypoint location"
               style={box.input}
             />
+            {waypoints[i]?.latLon && (
+              <div style={{ ...box.badge, marginTop: 4, display: "block", marginLeft: 0 }}>
+                Selected: {waypoints[i].latLon![1].toFixed(4)}, {waypoints[i].latLon![0].toFixed(4)}
+              </div>
+            )}
             {waypointLists[i]?.length > 0 && renderList("waypoint", waypointLists[i], i)}
           </div>
         </div>
@@ -345,7 +466,44 @@ export default function MapboxRoutingPanel({
 
       {/* End Point */}
       <div>
-        <div style={box.label}>📍 End</div>
+        <div style={{ ...box.label, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>📍 End</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={onMoveEndUp}
+              disabled={!endLatLon}
+              style={{
+                ...box.tinyBtn,
+                cursor: endLatLon ? "pointer" : "not-allowed",
+                color: endLatLon ? "#334155" : "#94a3b8",
+              }}
+            >
+              Up
+            </button>
+            <button
+              onClick={onClearEnd}
+              disabled={!endLatLon}
+              style={{
+                ...box.tinyBtn,
+                borderColor: "#fee2e2",
+                color: endLatLon ? "#dc2626" : "#94a3b8",
+                cursor: endLatLon ? "pointer" : "not-allowed",
+              }}
+            >
+              Remove
+            </button>
+            <button
+              onClick={() => onPickOnMap?.("end")}
+              style={{
+                ...box.tinyBtn,
+                background: pickMode === "end" ? "#dbeafe" : "#fff",
+                borderColor: pickMode === "end" ? "#93c5fd" : "#cbd5e1",
+              }}
+            >
+              Pick on map
+            </button>
+          </div>
+        </div>
         <div style={box.container}>
           <input
             value={endQ}
@@ -364,21 +522,43 @@ export default function MapboxRoutingPanel({
       </div>
 
       {/* Add Waypoint Button */}
-      <button
-        onClick={addWaypoint}
-        style={{
-          padding: "8px 12px",
-          borderRadius: 8,
-          border: "1px dashed #cbd5e1",
-          background: "#f8fafc",
-          color: "#475569",
-          cursor: "pointer",
-          fontSize: 13,
-          fontWeight: 500,
-        }}
-      >
-        + Add Waypoint
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={addWaypoint}
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px dashed #cbd5e1",
+            background: "#f8fafc",
+            color: "#475569",
+            cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          + Add Stop Input
+        </button>
+        <button
+          onClick={() => {
+            addWaypoint();
+            onPickOnMap?.("waypoint", waypointQueries.length);
+          }}
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #cbd5e1",
+            background: "#fff",
+            color: "#334155",
+            cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          + Add Stop On Map
+        </button>
+      </div>
     </div>
   );
 }

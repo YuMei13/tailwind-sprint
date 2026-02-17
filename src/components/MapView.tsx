@@ -10,15 +10,17 @@ import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import SegmentationControls from "@/components/SegmentationControls";
 import WebcamsPanel, { WebcamItem } from "@/components/WebcamsPanel";
-import MapboxDirectionsControl from "@/components/MapboxDirectionsControl";
+import MapboxRoutingPanel, { type Role as RoutingPanelRole } from "@/components/MapboxRoutingPanel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type LatLng = [number, number]; // [lat, lon]
 type LineLatLng = LatLng[];
+type LonLat = [number, number];
 
 type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
-type RouteSource = "planned" | "mapbox-directions";
+type RouteSource = "planned";
+type WaypointInput = { label: string; lonLat: LonLat | null };
 type RouteDebug = {
   source: RouteSource;
   incomingCount: number;
@@ -43,15 +45,6 @@ function isValidCoordinate(lat: number, lon: number): boolean {
     lon <= 180 &&
     !(lat === 0 && lon === 0)
   );
-}
-
-function toLonLat(coord: [number, number]): [number, number] | null {
-  const [a, b] = coord;
-  const aLatLon = Math.abs(a) <= 90 && Math.abs(b) <= 180;
-  const aLonLat = Math.abs(a) <= 180 && Math.abs(b) <= 90;
-  if (aLonLat && !aLatLon) return [a, b];
-  if (aLatLon) return [b, a];
-  return null;
 }
 
 // Fetch JSON with retry and timeout
@@ -195,11 +188,13 @@ export default function MapView() {
   // Start/End [lon, lat]
   const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
   const [endLonLat, setEndLonLat] = useState<[number, number] | null>(null);
-  // Waypoints [lon, lat]
-  const [waypoints, setWaypoints] = useState<[number, number][]>([]);
+  const [startLabel, setStartLabel] = useState("");
+  const [endLabel, setEndLabel] = useState("");
+  const [waypointInputs, setWaypointInputs] = useState<WaypointInput[]>([]);
 
   // Map pick mode
   const [pickMode, setPickMode] = useState<"none" | "start" | "end" | "waypoint">("none");
+  const [pendingWaypointIndex, setPendingWaypointIndex] = useState<number | null>(null);
 
   // Panel interaction
   const [cursorPt, setCursorPt] = useState<{ lat: number; lon: number } | null>(null);
@@ -211,6 +206,7 @@ export default function MapView() {
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
   const [routeDebug, setRouteDebug] = useState<RouteDebug | null>(null);
+  const latestRouteReqRef = useRef<number>(0);
 
   const mapRef = useRef<MapRef | null>(null);
 
@@ -263,43 +259,36 @@ export default function MapView() {
     router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
   };
 
-  // Fetch single leg coordinates using Mapbox Directions API
-  async function fetchLegCoords(
-    a: [number, number],
-    b: [number, number]
-  ): Promise<[number, number][]> {
-    const r = await fetchJSON<{ geometry: { type: string; coordinates: [number, number][] } }>("/api/mapbox-route", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ start: a, end: b, profile: "cycling" }),
-      timeoutMs: 45000,
-    });
-    const coordsRaw = r?.geometry?.coordinates ?? [];
-    return coordsRaw.filter(([lon, lat]) => isValidCoordinate(lat, lon));
+  async function fetchLegCoords(a: LonLat, b: LonLat): Promise<LonLat[]> {
+    const r = await fetchJSON<{
+      geometry: { type: string; coordinates: [number, number][] };
+    }>("/api/mapbox-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coordinates: [a, b], profile: "cycling" }),
+        timeoutMs: 45000,
+      });
+    return (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
+      isValidCoordinate(lat, lon)
+    );
   }
 
-  // Normalize a full route by sending raw coordinates to Mapbox route API
-  async function fetchRouteFromCoords(coords: [number, number][]): Promise<[number, number][]> {
-    const r = await fetchJSON<{ geometry: { type: string; coordinates: [number, number][] } }>("/api/mapbox-route", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: coords, profile: "cycling" }),
-      timeoutMs: 45000,
-    });
-    const coordsRaw = r?.geometry?.coordinates ?? [];
-    return coordsRaw.filter(([lon, lat]) => isValidCoordinate(lat, lon));
+  function sameLonLat(a: LonLat, b: LonLat) {
+    return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
   }
 
   // Multi-point route planning
   const applyRouteFromLonLat = async (
     merged: [number, number][],
-    meta: { source: RouteSource; incomingCount: number }
+    meta: { source: RouteSource; incomingCount: number },
+    requestId: number
   ) => {
-    // Clear old wind arrows immediately
-    setWinds([]);
-    setElevPts([]);
+    if (requestId !== latestRouteReqRef.current) return;
+
+    // Keep existing wind/elevation until fresh results are ready.
 
     if (merged.length < 2) {
+      if (requestId !== latestRouteReqRef.current) return;
       setRoute([]);
       setWinds([]);
       setElevPts([]);
@@ -320,6 +309,7 @@ export default function MapView() {
 
     // Set route (convert to [lat, lon])
     const line: [number, number][] = merged.map(([lon, lat]) => [lat, lon]);
+    if (requestId !== latestRouteReqRef.current) return;
     setRoute(line);
 
     // Wind: sample ~40 points
@@ -340,9 +330,11 @@ export default function MapView() {
         timeoutMs: 30000,
       });
       windPoints = Array.isArray(windData.points) ? windData.points : [];
+      if (requestId !== latestRouteReqRef.current) return;
       setWinds(windPoints);
     } catch {
       windRequestFailed = true;
+      if (requestId !== latestRouteReqRef.current) return;
       setWinds([]);
       console.error("[routing] wind request failed");
     }
@@ -358,16 +350,20 @@ export default function MapView() {
         timeoutMs: 30000,
       });
       elevationPoints = Array.isArray(elevData.points) ? elevData.points : [];
-      setElevPts(elevationPoints);
+      if (requestId !== latestRouteReqRef.current) return;
+      if (elevationPoints.length > 0) {
+        setElevPts(elevationPoints);
+      }
       if (elevationPoints.length > 0) {
         setShowElevation(true);
       }
     } catch (err) {
       elevationRequestFailed = true;
-      setElevPts([]);
+      if (requestId !== latestRouteReqRef.current) return;
       console.error("[routing] elevation request failed", err instanceof Error ? err.message : String(err));
     }
 
+    if (requestId !== latestRouteReqRef.current) return;
     const sampleLonLat = [...merged.slice(0, 3), ...merged.slice(-3)];
     const elevationValid = elevationPoints.filter((p) => typeof p.elevation === "number").length;
     const elevationErrors = elevationPoints.filter((p) => p.error).length;
@@ -403,31 +399,127 @@ export default function MapView() {
   const planRouteMulti = async (points: [number, number][]) => {
     try {
       if (points.length < 2) return;
-
-      const merged: [number, number][] = [];
+      const requestId = ++latestRouteReqRef.current;
+      const merged: LonLat[] = [];
       for (let i = 0; i < points.length - 1; i++) {
         const leg = await fetchLegCoords(points[i], points[i + 1]);
-        if (!leg.length) continue;
-        if (merged.length) {
-          merged.push(...leg.slice(1));
-        } else {
+        if (requestId !== latestRouteReqRef.current) return;
+        if (leg.length < 2) continue;
+        if (merged.length === 0) {
           merged.push(...leg);
+          continue;
         }
+        const first = leg[0];
+        const tail = sameLonLat(merged[merged.length - 1], first) ? leg.slice(1) : leg;
+        merged.push(...tail);
       }
-      await applyRouteFromLonLat(merged, { source: "planned", incomingCount: merged.length });
+      if (merged.length < 2) {
+        throw new Error("No valid route legs returned for input stop order");
+      }
+      await applyRouteFromLonLat(
+        merged,
+        { source: "planned", incomingCount: points.length },
+        requestId
+      );
     } catch (e) {
       console.error("Route plan failed", e);
     }
   };
 
+  const moveWaypoint = (fromIndex: number, toIndex: number) => {
+    setWaypointInputs((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length) return prev;
+      if (toIndex < 0 || toIndex >= prev.length) return prev;
+      if (fromIndex === toIndex) return prev;
+      const next = [...prev];
+      const [moving] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moving);
+      return next;
+    });
+  };
+
+  const beginMapPick = (role: "start" | "end" | "waypoint", wpIdx?: number) => {
+    if (role === "waypoint") {
+      setPendingWaypointIndex(typeof wpIdx === "number" ? wpIdx : null);
+      setPickMode("waypoint");
+      return;
+    }
+    setPendingWaypointIndex(null);
+    setPickMode(role);
+  };
+
+  const clearStart = () => {
+    setStartLonLat(null);
+    setStartLabel("");
+    writeQuery(null, endLonLat);
+    setPickMode("none");
+    setPendingWaypointIndex(null);
+  };
+
+  const clearEnd = () => {
+    setEndLonLat(null);
+    setEndLabel("");
+    writeQuery(startLonLat, null);
+    setPickMode("none");
+    setPendingWaypointIndex(null);
+  };
+
+  const moveStartDown = () => {
+    if (!startLonLat || waypointInputs.length === 0) return;
+    const first = waypointInputs[0];
+    if (!first.lonLat) return;
+    const oldStart = startLonLat;
+    const oldStartLabel = startLabel || `${startLonLat[1].toFixed(5)}, ${startLonLat[0].toFixed(5)}`;
+    setStartLonLat(first.lonLat);
+    setStartLabel(first.label || `${first.lonLat[1].toFixed(5)}, ${first.lonLat[0].toFixed(5)}`);
+    setWaypointInputs((prev) => {
+      if (prev.length === 0) return prev;
+      const next = [...prev];
+      next[0] = { label: oldStartLabel, lonLat: oldStart };
+      return next;
+    });
+  };
+
+  const moveEndUp = () => {
+    if (!endLonLat || waypointInputs.length === 0) return;
+    const lastIdx = waypointInputs.length - 1;
+    const last = waypointInputs[lastIdx];
+    if (!last.lonLat) return;
+    const oldEnd = endLonLat;
+    const oldEndLabel = endLabel || `${endLonLat[1].toFixed(5)}, ${endLonLat[0].toFixed(5)}`;
+    setEndLonLat(last.lonLat);
+    setEndLabel(last.label || `${last.lonLat[1].toFixed(5)}, ${last.lonLat[0].toFixed(5)}`);
+    setWaypointInputs((prev) => {
+      if (prev.length === 0) return prev;
+      const next = [...prev];
+      next[lastIdx] = { label: oldEndLabel, lonLat: oldEnd };
+      return next;
+    });
+  };
+
   // Plan route when start/end change
   useEffect(() => {
+    const waypointCoords = waypointInputs
+      .map((w) => w.lonLat)
+      .filter((v): v is LonLat => Array.isArray(v));
     if (startLonLat && endLonLat) {
-      const all: [number, number][] = [startLonLat, ...waypoints, endLonLat];
+      const all: [number, number][] = [startLonLat, ...waypointCoords, endLonLat];
       void planRouteMulti(all);
+      return;
     }
+    setRoute([]);
+    setWinds([]);
+    setElevPts([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startLonLat, endLonLat, JSON.stringify(waypoints)]);
+  }, [startLonLat, endLonLat, JSON.stringify(waypointInputs)]);
+
+  const displayWaypoints = useMemo(
+    () =>
+      waypointInputs
+        .map((wp, idx) => ({ idx, lonLat: wp.lonLat }))
+        .filter((wp): wp is { idx: number; lonLat: LonLat } => Array.isArray(wp.lonLat)),
+    [waypointInputs]
+  );
 
   // Fly to target
   useEffect(() => {
@@ -495,19 +587,36 @@ export default function MapView() {
             const v: [number, number] = [lon, lat];
             if (role === "start") {
               setStartLonLat(v);
+              setStartLabel(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
               writeQuery(v, endLonLat);
             } else if (role === "end") {
               setEndLonLat(v);
+              setEndLabel(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
               writeQuery(startLonLat, v);
             } else {
-              setWaypoints((prev) => [...prev, v]);
+              setWaypointInputs((prev) => {
+                if (typeof pendingWaypointIndex === "number") {
+                  const next = [...prev];
+                  while (next.length <= pendingWaypointIndex) {
+                    next.push({ label: `Stop ${next.length + 1}`, lonLat: null });
+                  }
+                  next[pendingWaypointIndex] = {
+                    label: `${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+                    lonLat: v,
+                  };
+                  return next;
+                }
+                return [
+                  ...prev,
+                  { label: `${lat.toFixed(5)}, ${lon.toFixed(5)}`, lonLat: v },
+                ];
+              });
             }
-            const s = role === "start" ? v : startLonLat;
-            const e = role === "end" ? v : endLonLat;
-            const wps = role === "waypoint" ? [...waypoints, v] : waypoints;
-            if (s && e) void planRouteMulti([s, ...wps, e]);
           }}
-          onDone={() => setPickMode("none")}
+          onDone={() => {
+            setPickMode("none");
+            setPendingWaypointIndex(null);
+          }}
         />
 
         {/* Start marker */}
@@ -521,15 +630,15 @@ export default function MapView() {
         )}
 
         {/* Waypoint markers */}
-        {waypoints.map(([lon, lat], i) => (
+        {displayWaypoints.map(({ idx, lonLat: [lon, lat] }) => (
           <Marker
-            key={`wp-${i}`}
+            key={`wp-${idx}`}
             longitude={lon}
             latitude={lat}
             color="#f59e0b"
             onClick={(e) => {
               e.originalEvent.stopPropagation();
-              setWaypoints((prev) => prev.filter((_, idx) => idx !== i));
+              setWaypointInputs((prev) => prev.filter((_, i) => i !== idx));
             }}
           />
         ))}
@@ -648,40 +757,61 @@ export default function MapView() {
         )}
       </div>
 
-      {/* Mapbox Directions Control */}
-        <MapboxDirectionsControl
-        mapRef={mapRef}
-        onRoute={(coords) => {
-          if (coords.length <= 1) return;
-          void (async () => {
-            const mergedFromPlugin = coords
-              .map((p) => toLonLat(p))
-              .filter((p): p is [number, number] => p !== null)
-              .filter(([lon, lat]) => isValidCoordinate(lat, lon));
-
-            let merged = mergedFromPlugin;
-            try {
-              const mergedFromMapboxApi = await fetchRouteFromCoords(mergedFromPlugin);
-              if (mergedFromMapboxApi.length > 1) {
-                merged = mergedFromMapboxApi;
-              }
-            } catch (e) {
-              console.error("[routing] mapbox-route normalization failed, fallback to plugin geometry", e);
+      <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1400 }}>
+        <div
+          style={{
+            background: "rgba(255,255,255,0.95)",
+            color: "#0f172a",
+            borderRadius: 8,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            padding: 8,
+          }}
+        >
+          <MapboxRoutingPanel
+            center={mapCenter}
+            startLatLon={startLonLat}
+            startLabel={startLabel}
+            endLatLon={endLonLat}
+            endLabel={endLabel}
+            waypoints={waypointInputs.map((w) => ({ label: w.label, latLon: w.lonLat }))}
+            onWaypointsChange={(next) =>
+              setWaypointInputs(next.map((w) => ({ label: w.label, lonLat: w.latLon ?? null })))
             }
-
-            await applyRouteFromLonLat(merged, {
-              source: "mapbox-directions",
-              incomingCount: coords.length,
-            });
-            const first = merged[0];
-            const last = merged[merged.length - 1];
-            writeQuery(
-              first ? ([first[0], first[1]] as [number, number]) : null,
-              last ? ([last[0], last[1]] as [number, number]) : null
-            );
-          })();
-        }}
-      />
+            onMoveWaypoint={moveWaypoint}
+            onClearStart={clearStart}
+            onClearEnd={clearEnd}
+            onMoveStartDown={moveStartDown}
+            onMoveEndUp={moveEndUp}
+            onPickOnMap={(role, wpIdx) => beginMapPick(role, wpIdx)}
+            pickMode={pickMode}
+            pendingWaypointIndex={pendingWaypointIndex}
+            onPick={(role: RoutingPanelRole, lat, lon, label, wpIdx) => {
+              const v: LonLat = [lon, lat];
+              if (role === "start") {
+                setStartLonLat(v);
+                setStartLabel(label);
+                writeQuery(v, endLonLat);
+                return;
+              }
+              if (role === "end") {
+                setEndLonLat(v);
+                setEndLabel(label);
+                writeQuery(startLonLat, v);
+                return;
+              }
+              if (typeof wpIdx !== "number") return;
+              setWaypointInputs((prev) => {
+                const next = [...prev];
+                while (next.length <= wpIdx) {
+                  next.push({ label: `Stop ${next.length + 1}`, lonLat: null });
+                }
+                next[wpIdx] = { label, lonLat: v };
+                return next;
+              });
+            }}
+          />
+        </div>
+      </div>
 
       {/* Bottom-right: Segments + Wind legend */}
       <div
