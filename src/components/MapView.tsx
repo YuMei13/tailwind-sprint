@@ -141,6 +141,34 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
       { name: "淡金公路", lonLat: [121.447001, 25.189019] },
     ],
   },
+  {
+    id: "rwgps-49826274",
+    name: "環大臺北自行車挑戰（RWGPS）",
+    description: "來源：Ride with GPS 路線 49826274。",
+    stops: [
+      { name: "起點（板橋）", lonLat: [121.46942, 25.00955] },
+      { name: "深坑", lonLat: [121.69745, 25.01866] },
+      { name: "福隆", lonLat: [121.92695, 25.02745] },
+      { name: "基隆", lonLat: [121.74075, 25.13611] },
+      { name: "老梅", lonLat: [121.54876, 25.28943] },
+      { name: "關渡", lonLat: [121.448557, 25.165314] },
+      { name: "終點（板橋）", lonLat: [121.46943, 25.00953] },
+    ],
+  },
+  {
+    id: "rwgps-38179892",
+    name: "環小台北自行車道（RWGPS）",
+    description: "來源：Ride with GPS 路線 38179892。",
+    stops: [
+      { name: "起點（文山）", lonLat: [121.53943, 24.98836] },
+      { name: "新店溪右岸自行車道", lonLat: [121.53062, 25.01035] },
+      { name: "淡水線自行車道", lonLat: [121.50578, 25.05247] },
+      { name: "基隆河左岸自行車道", lonLat: [121.54351, 25.07354] },
+      { name: "南港（研究院路）", lonLat: [121.61659, 25.05521] },
+      { name: "景美溪右岸自行車道", lonLat: [121.53997, 24.98834] },
+      { name: "終點（文山）", lonLat: [121.53844, 24.98843] },
+    ],
+  },
 ];
 
 // Validate coordinates
