@@ -21,6 +21,13 @@ type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
 type RouteSource = "planned";
 type WaypointInput = { label: string; lonLat: LonLat | null };
+type PresetStop = { name: string; lonLat: LonLat };
+type RoutePreset = {
+  id: string;
+  name: string;
+  description: string;
+  stops: PresetStop[];
+};
 type RouteDebug = {
   source: RouteSource;
   incomingCount: number;
@@ -33,6 +40,108 @@ type RouteDebug = {
   updatedAt: string;
   message?: string;
 };
+
+const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
+  {
+    id: "bike100-jianan",
+    name: "台北內湖｜劍南路",
+    description: "參考 bike100 台北熱門路線：內湖劍南路爬坡。",
+    stops: [
+      { name: "美麗華百樂園", lonLat: [121.557678, 25.083398] },
+      { name: "劍南路捷運站", lonLat: [121.555571, 25.084684] },
+    ],
+  },
+  {
+    id: "bike100-nanshen",
+    name: "台北南港｜南深深南",
+    description: "參考 bike100 台北熱門路線：南港南深路段。",
+    stops: [
+      { name: "南港展覽館", lonLat: [121.617219, 25.054569] },
+      { name: "南深路", lonLat: [121.617473, 25.033346] },
+      { name: "深南路", lonLat: [121.621839, 25.010681] },
+    ],
+  },
+  {
+    id: "bike100-zhongshe",
+    name: "台北士林｜中社路",
+    description: "參考 bike100 台北路線：士林中社路。",
+    stops: [
+      { name: "國立故宮博物院", lonLat: [121.549134, 25.102039] },
+      { name: "中社路一段", lonLat: [121.560807, 25.106856] },
+    ],
+  },
+  {
+    id: "bike100-maokong",
+    name: "台北木柵｜貓空（順時針）",
+    description: "參考 bike100 台北路線：木柵上貓空。",
+    stops: [
+      { name: "木柵動物園", lonLat: [121.581081, 24.998674] },
+      { name: "貓空纜車站", lonLat: [121.587892, 24.968622] },
+      { name: "指南宮", lonLat: [121.589685, 24.978929] },
+    ],
+  },
+  {
+    id: "bike100-houshanyue",
+    name: "台北木柵｜猴山岳",
+    description: "參考 bike100 台北熱門路線：木柵猴山岳。",
+    stops: [
+      { name: "木柵動物園", lonLat: [121.581081, 24.998674] },
+      { name: "草湳大榕樹", lonLat: [121.608451, 24.97011] },
+      { name: "猴山岳步道口", lonLat: [121.6215, 24.9736] },
+    ],
+  },
+  {
+    id: "bike100-tunshan-nav",
+    name: "台北天母｜中山北路上大屯山助航站",
+    description: "參考 bike100 台北進階路線：中山北路上大屯助航站。",
+    stops: [
+      { name: "天母運動公園", lonLat: [121.534611, 25.114684] },
+      { name: "中山北路七段", lonLat: [121.530516, 25.119921] },
+      { name: "大屯山助航站", lonLat: [121.522727, 25.175209] },
+    ],
+  },
+  {
+    id: "bike100-haima",
+    name: "台北陽明山系｜海馬（逆時針）",
+    description: "參考 bike100 高評分台北路線：陽明山海馬。",
+    stops: [
+      { name: "至善公園", lonLat: [121.538985, 25.098452] },
+      { name: "風櫃嘴", lonLat: [121.5996, 25.1329] },
+      { name: "萬里", lonLat: [121.689987, 25.178183] },
+    ],
+  },
+  {
+    id: "bike100-flying-cat",
+    name: "台北石碇｜飛躍的貓咪（順時針）",
+    description: "參考 bike100 高評分台北路線：石碇飛躍的貓咪。",
+    stops: [
+      { name: "石碇老街", lonLat: [121.659961, 24.991052] },
+      { name: "平溪", lonLat: [121.736206, 25.025877] },
+      { name: "菁桐", lonLat: [121.72512, 25.02285] },
+    ],
+  },
+  {
+    id: "bike100-ym-serial",
+    name: "台北陽明山景連騎｜文大後山→大屯助航站→中湖戰備道",
+    description: "參考 bike100 台北高評分連騎路線。",
+    stops: [
+      { name: "文化大學", lonLat: [121.539019, 25.135783] },
+      { name: "大屯山助航站", lonLat: [121.522727, 25.175209] },
+      { name: "中湖戰備道", lonLat: [121.576, 25.1678] },
+    ],
+  },
+  {
+    id: "bike100-rulai",
+    name: "台北陽明山系｜如來神掌（逆時針）",
+    description: "參考 bike100 台北高難度人氣路線：如來神掌。",
+    stops: [
+      { name: "北投", lonLat: [121.509357, 25.140872] },
+      { name: "陽金公路", lonLat: [121.546563, 25.179866] },
+      { name: "金山", lonLat: [121.63653, 25.222204] },
+      { name: "淡金公路", lonLat: [121.447001, 25.189019] },
+    ],
+  },
+];
 
 // Validate coordinates
 function isValidCoordinate(lat: number, lon: number): boolean {
@@ -247,6 +356,7 @@ export default function MapView() {
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
   const [routeDebug, setRouteDebug] = useState<RouteDebug | null>(null);
+  const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
   const latestRouteReqRef = useRef<number>(0);
 
   const mapRef = useRef<MapRef | null>(null);
@@ -353,26 +463,62 @@ export default function MapView() {
     if (requestId !== latestRouteReqRef.current) return;
     setRoute(line);
 
-    // Wind: sample ~40 points
-    const step = Math.max(1, Math.floor(merged.length / 40));
-    const sample = merged.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon]);
-    const last = merged[merged.length - 1];
-    const lastS = sample[sample.length - 1];
-    if (!lastS || lastS[0] !== last[1] || lastS[1] !== last[0]) {
-      sample.push([last[1], last[0]]);
-    }
+    // Wind: sample route and retry with fewer points if response has no valid wind vectors.
+    const buildSample = (targetCount: number): [number, number][] => {
+      const step = Math.max(1, Math.floor(merged.length / targetCount));
+      const pts = merged.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon] as [number, number]);
+      const last = merged[merged.length - 1];
+      const lastS = pts[pts.length - 1];
+      if (!lastS || lastS[0] !== last[1] || lastS[1] !== last[0]) {
+        pts.push([last[1], last[0]]);
+      }
+      return pts;
+    };
+
     let windPoints: WindPoint[] = [];
+    let validWindPoints: WindPoint[] = [];
     let windRequestFailed = false;
     try {
+      const firstSample = buildSample(20);
       const windData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ points: sample }),
+        body: JSON.stringify({ points: firstSample }),
         timeoutMs: 30000,
       });
       windPoints = Array.isArray(windData.points) ? windData.points : [];
+      validWindPoints = windPoints.filter(
+        (w) =>
+          Number.isFinite(w.lat) &&
+          Number.isFinite(w.lon) &&
+          Number.isFinite(w.dirDeg) &&
+          (Number.isFinite(w.speedMs) || Number.isFinite(w.speedKmh))
+      );
+
+      // Retry once with fewer points when first pass has no usable vectors.
+      if (validWindPoints.length === 0) {
+        const retrySample = buildSample(8);
+        const retryData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind?nocache=1", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ points: retrySample }),
+          timeoutMs: 30000,
+        });
+        const retryPoints = Array.isArray(retryData.points) ? retryData.points : [];
+        const retryValid = retryPoints.filter(
+          (w) =>
+            Number.isFinite(w.lat) &&
+            Number.isFinite(w.lon) &&
+            Number.isFinite(w.dirDeg) &&
+            (Number.isFinite(w.speedMs) || Number.isFinite(w.speedKmh))
+        );
+        if (retryValid.length > 0) {
+          windPoints = retryPoints;
+          validWindPoints = retryValid;
+        }
+      }
       if (requestId !== latestRouteReqRef.current) return;
-      setWinds(windPoints);
+      setWinds(validWindPoints);
     } catch {
       windRequestFailed = true;
       if (requestId !== latestRouteReqRef.current) return;
@@ -413,7 +559,7 @@ export default function MapView() {
       incomingCount: meta.incomingCount,
       mergedCount: merged.length,
       sampleLonLat,
-      windCount: windPoints.length,
+      windCount: validWindPoints.length,
       elevationReturned: elevationPoints.length,
       elevationValid,
       elevationErrors,
@@ -423,7 +569,9 @@ export default function MapView() {
         : elevationValid > 0
           ? windRequestFailed
             ? "Wind request failed"
-            : undefined
+            : validWindPoints.length === 0
+              ? "No valid wind vectors returned"
+              : undefined
           : "Elevation API returned no numeric elevations",
     });
 
@@ -538,6 +686,56 @@ export default function MapView() {
     });
   };
 
+  const applyRoutePreset = async (presetId: string) => {
+    const preset = TAIPEI_ROUTE_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setApplyingPresetId(presetId);
+    try {
+      const points = preset.stops.map((s) => ({
+        name: s.name,
+        lat: s.lonLat[1],
+        lon: s.lonLat[0],
+      }));
+      if (points.length < 2) {
+        throw new Error("Could not resolve enough stops for this preset.");
+      }
+      const start = points[0];
+      const end = points[points.length - 1];
+      const waypoints = points.slice(1, -1);
+
+      setStartLonLat([start.lon, start.lat]);
+      setStartLabel(start.name);
+      setEndLonLat([end.lon, end.lat]);
+      setEndLabel(end.name);
+      setWaypointInputs(
+        waypoints.map((w) => ({
+          label: w.name,
+          lonLat: [w.lon, w.lat] as LonLat,
+        }))
+      );
+      setPickMode("none");
+      setPendingWaypointIndex(null);
+      setMapCenter({ lat: (start.lat + end.lat) / 2, lon: (start.lon + end.lon) / 2 });
+      writeQuery([start.lon, start.lat], [end.lon, end.lat]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load preset route";
+      setRouteDebug((prev) => ({
+        source: "planned",
+        incomingCount: prev?.incomingCount ?? 0,
+        mergedCount: prev?.mergedCount ?? 0,
+        sampleLonLat: prev?.sampleLonLat ?? [],
+        windCount: prev?.windCount ?? 0,
+        elevationReturned: prev?.elevationReturned ?? 0,
+        elevationValid: prev?.elevationValid ?? 0,
+        elevationErrors: prev?.elevationErrors ?? 0,
+        updatedAt: new Date().toISOString(),
+        message: msg,
+      }));
+    } finally {
+      setApplyingPresetId(null);
+    }
+  };
+
   // Plan route when start/end change
   useEffect(() => {
     const waypointCoords = waypointInputs
@@ -582,18 +780,6 @@ export default function MapView() {
       duration: 800,
     });
   }, [webcamFlyTarget]);
-
-  const routeGeoJSON = useMemo(() => {
-    if (route.length < 2) return null;
-    return {
-      type: "Feature" as const,
-      geometry: {
-        type: "LineString" as const,
-        coordinates: route.map(([lat, lon]) => [lon, lat]),
-      },
-      properties: {},
-    };
-  }, [route]);
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
@@ -694,21 +880,7 @@ export default function MapView() {
           />
         ))}
 
-        {/* Route line */}
-        {routeGeoJSON && (
-          <Source id="route" type="geojson" data={routeGeoJSON}>
-            <Layer
-              id="route-line"
-              type="line"
-              paint={{
-                "line-color": "#3b82f6",
-                "line-width": 3,
-              }}
-            />
-          </Source>
-        )}
-
-        {/* Route with wind coloring */}
+        {/* Route with wind coloring and wind arrows */}
         {route.length > 0 && (
           <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />
         )}
@@ -808,6 +980,13 @@ export default function MapView() {
             onPickOnMap={(role, wpIdx) => beginMapPick(role, wpIdx)}
             pickMode={pickMode}
             pendingWaypointIndex={pendingWaypointIndex}
+            routePresets={TAIPEI_ROUTE_PRESETS.map((p) => ({
+              id: p.id,
+              name: p.name,
+              description: p.description,
+            }))}
+            onApplyPreset={applyRoutePreset}
+            isApplyingPreset={Boolean(applyingPresetId)}
             onPick={(role: RoutingPanelRole, lat, lon, label, wpIdx) => {
               const v: LonLat = [lon, lat];
               if (role === "start") {

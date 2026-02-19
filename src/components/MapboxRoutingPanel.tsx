@@ -26,6 +26,9 @@ type Props = {
   onMoveEndUp?: () => void;
   pickMode?: "none" | "start" | "end" | "waypoint";
   pendingWaypointIndex?: number | null;
+  routePresets?: Array<{ id: string; name: string; description?: string }>;
+  onApplyPreset?: (presetId: string) => void | Promise<void>;
+  isApplyingPreset?: boolean;
 };
 
 function useDebounced<T>(value: T, delay = 300) {
@@ -76,6 +79,9 @@ export default function MapboxRoutingPanel({
   onMoveEndUp,
   pickMode = "none",
   pendingWaypointIndex = null,
+  routePresets = [],
+  onApplyPreset,
+  isApplyingPreset = false,
 }: Props) {
   const [startQ, setStartQ] = useState(startLabelProp ?? "");
   const [endQ, setEndQ] = useState(endLabelProp ?? "");
@@ -104,6 +110,17 @@ export default function MapboxRoutingPanel({
   const [waypointLists, setWaypointLists] = useState<GeoItem[][]>([]);
   const [activeIdx, setActiveIdx] = useState<{ role: Role; wpIdx?: number; idx: number } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(routePresets[0]?.id ?? "");
+
+  useEffect(() => {
+    if (!routePresets.length) {
+      setSelectedPresetId("");
+      return;
+    }
+    if (!routePresets.some((r) => r.id === selectedPresetId)) {
+      setSelectedPresetId(routePresets[0].id);
+    }
+  }, [routePresets, selectedPresetId]);
 
   const runSearch = useCallback(
     async (role: Role, q: string, wpIdx?: number) => {
@@ -197,6 +214,15 @@ export default function MapboxRoutingPanel({
         borderRadius: 6,
         border: "1px solid #d1d5db",
         fontSize: 14,
+      },
+      select: {
+        width: "100%",
+        padding: "7px 10px",
+        borderRadius: 6,
+        border: "1px solid #d1d5db",
+        fontSize: 13,
+        color: "#0f172a",
+        background: "#fff",
       },
       label: { fontSize: 12, fontWeight: 600 as const, marginBottom: 4, color: "#1e293b" },
       listWrap: {
@@ -324,6 +350,56 @@ export default function MapboxRoutingPanel({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, width: 360 }}>
+      {routePresets.length > 0 && (
+        <div
+          style={{
+            border: "1px solid #dbeafe",
+            borderRadius: 8,
+            background: "#f8fbff",
+            padding: 8,
+          }}
+        >
+          <div style={{ ...box.label, marginBottom: 6 }}>台北熱門自行車路線</div>
+          <select
+            value={selectedPresetId}
+            onChange={(e) => setSelectedPresetId(e.target.value)}
+            style={box.select}
+          >
+            {routePresets.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name}
+              </option>
+            ))}
+          </select>
+          {selectedPresetId && (
+            <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>
+              {routePresets.find((p) => p.id === selectedPresetId)?.description ?? ""}
+            </div>
+          )}
+          <button
+            onClick={() => {
+              if (!selectedPresetId) return;
+              void onApplyPreset?.(selectedPresetId);
+            }}
+            disabled={!selectedPresetId || isApplyingPreset}
+            style={{
+              marginTop: 8,
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 7,
+              border: "1px solid #bfdbfe",
+              background: isApplyingPreset ? "#e2e8f0" : "#dbeafe",
+              color: isApplyingPreset ? "#64748b" : "#1d4ed8",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: isApplyingPreset ? "not-allowed" : "pointer",
+            }}
+          >
+            {isApplyingPreset ? "路線載入中..." : "載入所選路線"}
+          </button>
+        </div>
+      )}
+
       <div style={{ fontSize: 11, color: "#64748b" }}>
         One routing panel: type places or pick directly on map.
       </div>

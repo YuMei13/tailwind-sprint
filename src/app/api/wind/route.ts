@@ -46,16 +46,17 @@ export async function POST(req: NextRequest) {
       key,
       90,
       async () => {
-        const out: WindPoint[] = [];
-        for (const [lat, lon] of points) {
-          try {
-            const w = await fetchWind(lat, lon, 12000);
-            out.push({ lat, lon, ...w });
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : "fetch failed";
-            out.push({ lat, lon, error: true as const, msg });
-          }
-        }
+        const out = await Promise.all(
+          points.map(async ([lat, lon]) => {
+            try {
+              const w = await fetchWind(lat, lon, 8000);
+              return { lat, lon, ...w } satisfies WindPoint;
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : "fetch failed";
+              return { lat, lon, error: true as const, msg } satisfies WindPoint;
+            }
+          })
+        );
         return { points: out };
       },
       nocache
