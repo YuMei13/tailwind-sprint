@@ -199,6 +199,19 @@ export default function MapView() {
     boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
     padding: 0,
   };
+  const panelCardStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,0.95)",
+    color: "#1e293b",
+    borderRadius: 8,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    padding: 8,
+  };
+  const panelHeaderStyle: React.CSSProperties = {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  };
 
   // === State ===
   const [route, setRoute] = useState<LineLatLng>([]);
@@ -752,18 +765,8 @@ export default function MapView() {
       {/* Left top: Webcams panel */}
       <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1600 }}>
         {showWebcams ? (
-          <div
-            style={{
-              background: "rgba(255,255,255,0.95)",
-              color: "#1e293b",
-              borderRadius: 8,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-              padding: 6,
-            }}
-          >
-            <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
-            >
+          <div style={panelCardStyle}>
+            <div style={panelHeaderStyle}>
               <span style={{ fontWeight: 600 }}>Webcams</span>
               <button onClick={() => setShowWebcams(false)} style={closeButtonStyle} aria-label="Close webcams panel">
                 ✖
@@ -786,15 +789,7 @@ export default function MapView() {
       </div>
 
       <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1400 }}>
-        <div
-          style={{
-            background: "rgba(255,255,255,0.95)",
-            color: "#0f172a",
-            borderRadius: 8,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            padding: 8,
-          }}
-        >
+        <div style={panelCardStyle}>
           <MapboxRoutingPanel
             center={mapCenter}
             startLatLon={startLonLat}
@@ -855,19 +850,9 @@ export default function MapView() {
       >
         <div>
           {showSegments ? (
-            <div
-              style={{
-                background: "rgba(255,255,255,0.95)",
-                color: "#1e293b",
-                borderRadius: 8,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                padding: 6,
-              }}
-            >
-              <div
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
-              >
-                <span style={{ fontWeight: 600 }}>Wing Sampling Segments</span>
+            <div style={panelCardStyle}>
+              <div style={panelHeaderStyle}>
+                <span style={{ fontWeight: 600 }}>Wind Sampling Segments</span>
                 <button onClick={() => setShowSegments(false)} style={closeButtonStyle} aria-label="Close segments panel">
                   ✖
                 </button>
@@ -893,10 +878,7 @@ export default function MapView() {
             left: 65,
             top: 210,
             zIndex: 1300,
-            background: "rgba(255,255,255,0.95)",
-            color: "#0f172a",
-            borderRadius: 8,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            ...panelCardStyle,
             padding: 8,
             maxWidth: 560,
             fontSize: 12,
@@ -921,19 +903,14 @@ export default function MapView() {
         {showElevation ? (
           <div
             style={{
-              background: "rgba(255,255,255,0.95)",
-              color: "#1e293b",
-              borderRadius: 8,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              ...panelCardStyle,
               padding: 6,
               maxHeight: "60vh",
               overflowY: "auto",
               minWidth: "250px",
             }}
           >
-            <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
-            >
+            <div style={panelHeaderStyle}>
               <span style={{ fontWeight: 600 }}>Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}</span>
               <button onClick={() => setShowElevation(false)} style={closeButtonStyle} aria-label="Close elevation panel">
                 ✖
