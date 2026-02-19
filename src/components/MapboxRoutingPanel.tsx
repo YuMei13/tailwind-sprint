@@ -62,6 +62,85 @@ async function geocodeFetch(
   return j.items ?? [];
 }
 
+function normalizeText(s: string) {
+  return s.trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function approxDistanceKm(aLat: number, aLon: number, bLat: number, bLon: number) {
+  const dLat = (aLat - bLat) * 111;
+  const dLon = (aLon - bLon) * 111 * Math.cos((aLat * Math.PI) / 180);
+  return Math.hypot(dLat, dLon);
+}
+
+function layerWeight(type?: string) {
+  switch (type) {
+    case "poi":
+    case "venue":
+      return 30;
+    case "place":
+      return 24;
+    case "address":
+      return 22;
+    case "street":
+      return 14;
+    case "locality":
+      return 8;
+    default:
+      return 0;
+  }
+}
+
+function isAddressLikeQuery(qRaw: string) {
+  const q = normalizeText(qRaw);
+  if (/\d/.test(q)) return true;
+  // Common address tokens in zh/en
+  const tokens = ["路", "街", "段", "巷", "弄", "號", "rd", "road", "st", "street", "ave", "avenue"];
+  return tokens.some((t) => q.includes(t));
+}
+
+function pickBestGeocodeItem(query: string, items: GeoItem[], center: { lat: number; lon: number }): GeoItem | null {
+  if (!items.length) return null;
+  const q = normalizeText(query);
+  const addressLike = isAddressLikeQuery(query);
+  let best: GeoItem | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const it of items) {
+    const name = normalizeText(it.name || "");
+    let score = 0;
+
+    if (name === q) score += 140;
+    if (name.startsWith(q)) score += 90;
+    if (name.includes(q) || q.includes(name)) score += 70;
+    score += layerWeight(it.type);
+
+    // Prefer POIs unless user clearly typed an address-like query.
+    if (!addressLike) {
+      if (it.type === "poi" || it.type === "venue") score += 45;
+      if (it.type === "address" || it.type === "street") score -= 20;
+    } else {
+      if (it.type === "address" || it.type === "street") score += 20;
+    }
+
+    if (q.includes("捷運") && name.includes("捷運")) score += 35;
+    if (q.includes("車站") && name.includes("車站")) score += 30;
+    if (q.includes("公園") && name.includes("公園")) score += 22;
+    if (q.includes("碼頭") && name.includes("碼頭")) score += 22;
+    if (q.includes("宮") && name.includes("宮")) score += 18;
+    if (q.includes("路") && it.type === "street") score += 18;
+
+    const distKm = approxDistanceKm(it.lat, it.lon, center.lat, center.lon);
+    score -= Math.min(distKm, 60) * 0.9;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = it;
+    }
+  }
+
+  return best;
+}
+
 export default function MapboxRoutingPanel({
   onPick,
   center,
@@ -109,7 +188,7 @@ export default function MapboxRoutingPanel({
   const [endList, setEndList] = useState<GeoItem[]>([]);
   const [waypointLists, setWaypointLists] = useState<GeoItem[][]>([]);
   const [activeIdx, setActiveIdx] = useState<{ role: Role; wpIdx?: number; idx: number } | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const abortMapRef = useRef<Record<string, AbortController>>({});
   const [selectedPresetId, setSelectedPresetId] = useState<string>(routePresets[0]?.id ?? "");
 
   useEffect(() => {
@@ -124,6 +203,7 @@ export default function MapboxRoutingPanel({
 
   const runSearch = useCallback(
     async (role: Role, q: string, wpIdx?: number) => {
+      const key = role === "waypoint" ? `waypoint-${wpIdx ?? -1}` : role;
       if (!q.trim()) {
         if (role === "start") setStartList([]);
         else if (role === "end") setEndList([]);
@@ -136,9 +216,9 @@ export default function MapboxRoutingPanel({
         }
         return;
       }
-      abortRef.current?.abort();
+      abortMapRef.current[key]?.abort();
       const ac = new AbortController();
-      abortRef.current = ac;
+      abortMapRef.current[key] = ac;
       try {
         const items = await geocodeFetch(
           q,
@@ -205,6 +285,32 @@ export default function MapboxRoutingPanel({
     [onPick, waypointQueries]
   );
 
+  const resolveAndPick = useCallback(
+    async (role: Role, rawQuery: string, wpIdx?: number) => {
+      const q = rawQuery.trim();
+      if (!q) return;
+      try {
+        const candidates = await geocodeFetch(
+          q,
+          { focusLat: center.lat, focusLon: center.lon, lang: "zh-TW", limit: 8 },
+          undefined
+        );
+        const best = pickBestGeocodeItem(q, candidates, center);
+        if (best) onChoose(role, best, wpIdx);
+      } catch {
+        // ignore
+      }
+    },
+    [center, onChoose]
+  );
+
+  useEffect(() => {
+    const abortMap = abortMapRef.current;
+    return () => {
+      Object.values(abortMap).forEach((ac) => ac.abort());
+    };
+  }, []);
+
   const box = useMemo(
     () => ({
       container: { position: "relative" as const, width: 360 },
@@ -214,6 +320,22 @@ export default function MapboxRoutingPanel({
         borderRadius: 6,
         border: "1px solid #d1d5db",
         fontSize: 14,
+      },
+      inputRow: {
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+      },
+      applyBtn: {
+        padding: "6px 8px",
+        borderRadius: 6,
+        border: "1px solid #bfdbfe",
+        background: "#eff6ff",
+        color: "#1d4ed8",
+        fontSize: 12,
+        fontWeight: 700,
+        cursor: "pointer",
+        whiteSpace: "nowrap" as const,
       },
       select: {
         width: "100%",
@@ -300,8 +422,8 @@ export default function MapboxRoutingPanel({
     e: React.KeyboardEvent<HTMLInputElement>,
     wpIdx?: number
   ) => {
-    if (!items.length) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!items.length) return;
       e.preventDefault();
       const cur =
         activeIdx && activeIdx.role === role && (role !== "waypoint" || activeIdx.wpIdx === wpIdx)
@@ -312,12 +434,26 @@ export default function MapboxRoutingPanel({
       setActiveIdx({ role, wpIdx, idx: next });
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const cur =
-        activeIdx && activeIdx.role === role && (role !== "waypoint" || activeIdx.wpIdx === wpIdx)
-          ? activeIdx.idx
-          : 0;
-      const item = items[cur];
-      if (item) onChoose(role, item, wpIdx);
+      if (items.length > 0) {
+        const cur =
+          activeIdx && activeIdx.role === role && (role !== "waypoint" || activeIdx.wpIdx === wpIdx)
+            ? activeIdx.idx
+            : 0;
+        const item = items[cur];
+        if (item) onChoose(role, item, wpIdx);
+        return;
+      }
+      const q =
+        role === "start"
+          ? startQ
+          : role === "end"
+            ? endQ
+            : typeof wpIdx === "number"
+              ? waypointQueries[wpIdx] ?? ""
+              : "";
+      if (!q.trim()) return;
+      // Fallback: user typed text and pressed Enter before selecting dropdown.
+      void resolveAndPick(role, q, wpIdx);
     } else if (e.key === "Escape") {
       if (role === "start") setStartList([]);
       else if (role === "end") setEndList([]);
@@ -444,13 +580,18 @@ export default function MapboxRoutingPanel({
           </div>
         </div>
         <div style={box.container}>
-          <input
-            value={startQ}
-            onChange={(e) => setStartQ(e.target.value)}
-            onKeyDown={(e) => onKey("start", startList, e)}
-            placeholder="Starting location"
-            style={box.input}
-          />
+          <div style={box.inputRow}>
+            <input
+              value={startQ}
+              onChange={(e) => setStartQ(e.target.value)}
+              onKeyDown={(e) => onKey("start", startList, e)}
+              placeholder="Starting location (Traditional Chinese supported)"
+              style={box.input}
+            />
+            <button onClick={() => void resolveAndPick("start", startQ)} style={box.applyBtn}>
+              Apply
+            </button>
+          </div>
           {startLatLon && (
             <div style={{ ...box.badge, marginTop: 4, display: "block", marginLeft: 0 }}>
               Selected: {startLatLon[1].toFixed(4)}, {startLatLon[0].toFixed(4)}
@@ -519,17 +660,28 @@ export default function MapboxRoutingPanel({
             </div>
           </div>
           <div style={box.container}>
-            <input
-              value={q}
-              onChange={(e) => {
-                const newQueries = [...waypointQueries];
-                newQueries[i] = e.target.value;
-                setWaypointQueries(newQueries);
-              }}
-              onKeyDown={(e) => onKey("waypoint", waypointLists[i] ?? [], e, i)}
-              placeholder="Waypoint location"
-              style={box.input}
-            />
+            <div style={box.inputRow}>
+              <input
+                value={q}
+                onChange={(e) => {
+                  const newQueries = [...waypointQueries];
+                  newQueries[i] = e.target.value;
+                  setWaypointQueries(newQueries);
+                }}
+                onKeyDown={(e) => onKey("waypoint", waypointLists[i] ?? [], e, i)}
+                placeholder="Waypoint location (Traditional Chinese supported)"
+                style={box.input}
+              />
+              <button
+                onClick={() => {
+                  const current = waypointQueries[i] ?? "";
+                  void resolveAndPick("waypoint", current, i);
+                }}
+                style={box.applyBtn}
+              >
+                Apply
+              </button>
+            </div>
             {waypoints[i]?.latLon && (
               <div style={{ ...box.badge, marginTop: 4, display: "block", marginLeft: 0 }}>
                 Selected: {waypoints[i].latLon![1].toFixed(4)}, {waypoints[i].latLon![0].toFixed(4)}
@@ -581,13 +733,18 @@ export default function MapboxRoutingPanel({
           </div>
         </div>
         <div style={box.container}>
-          <input
-            value={endQ}
-            onChange={(e) => setEndQ(e.target.value)}
-            onKeyDown={(e) => onKey("end", endList, e)}
-            placeholder="Destination"
-            style={box.input}
-          />
+          <div style={box.inputRow}>
+            <input
+              value={endQ}
+              onChange={(e) => setEndQ(e.target.value)}
+              onKeyDown={(e) => onKey("end", endList, e)}
+              placeholder="Destination (Traditional Chinese supported)"
+              style={box.input}
+            />
+            <button onClick={() => void resolveAndPick("end", endQ)} style={box.applyBtn}>
+              Apply
+            </button>
+          </div>
           {endLatLon && (
             <div style={{ ...box.badge, marginTop: 4, display: "block", marginLeft: 0 }}>
               Selected: {endLatLon[1].toFixed(4)}, {endLatLon[0].toFixed(4)}

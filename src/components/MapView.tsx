@@ -424,6 +424,20 @@ export default function MapView() {
     );
   }
 
+  async function fetchRouteForAllPoints(points: LonLat[]): Promise<LonLat[]> {
+    const r = await fetchJSON<{
+      geometry: { type: string; coordinates: [number, number][] };
+    }>("/api/mapbox-route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coordinates: points, profile: "cycling" }),
+      timeoutMs: 45000,
+    });
+    return (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
+      isValidCoordinate(lat, lon)
+    );
+  }
+
   function sameLonLat(a: LonLat, b: LonLat) {
     return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
   }
@@ -591,7 +605,13 @@ export default function MapView() {
       const requestId = ++latestRouteReqRef.current;
       const merged: LonLat[] = [];
       for (let i = 0; i < points.length - 1; i++) {
-        const leg = await fetchLegCoords(points[i], points[i + 1]);
+        let leg: LonLat[] = [];
+        try {
+          leg = await fetchLegCoords(points[i], points[i + 1]);
+        } catch {
+          // Keep trying other legs; we'll fallback later if needed.
+          leg = [];
+        }
         if (requestId !== latestRouteReqRef.current) return;
         if (leg.length < 2) continue;
         if (merged.length === 0) {
@@ -603,6 +623,53 @@ export default function MapView() {
         merged.push(...tail);
       }
       if (merged.length < 2) {
+        // Fallback 1: one-shot Mapbox route for all points
+        let oneShot: LonLat[] = [];
+        try {
+          oneShot = await fetchRouteForAllPoints(points);
+        } catch {
+          oneShot = [];
+        }
+        if (requestId !== latestRouteReqRef.current) return;
+
+        if (oneShot.length >= 2) {
+          await applyRouteFromLonLat(
+            oneShot,
+            { source: "planned", incomingCount: points.length },
+            requestId
+          );
+          setRouteDebug((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  updatedAt: new Date().toISOString(),
+                  message: "Some legs failed; used one-shot route fallback.",
+                }
+              : prev
+          );
+          return;
+        }
+
+        // Fallback 2: straight polyline so user always sees response
+        const straight = points.filter(([lon, lat]) => isValidCoordinate(lat, lon));
+        if (straight.length >= 2) {
+          await applyRouteFromLonLat(
+            straight,
+            { source: "planned", incomingCount: points.length },
+            requestId
+          );
+          setRouteDebug((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  updatedAt: new Date().toISOString(),
+                  message: "Routing API failed; showing straight-line fallback.",
+                }
+              : prev
+          );
+          return;
+        }
+
         throw new Error("No valid route legs returned for input stop order");
       }
       await applyRouteFromLonLat(
@@ -612,6 +679,18 @@ export default function MapView() {
       );
     } catch (e) {
       console.error("Route plan failed", e);
+      setRouteDebug({
+        source: "planned",
+        incomingCount: points.length,
+        mergedCount: 0,
+        sampleLonLat: points.slice(0, 2) as [number, number][],
+        windCount: 0,
+        elevationReturned: 0,
+        elevationValid: 0,
+        elevationErrors: 0,
+        updatedAt: new Date().toISOString(),
+        message: e instanceof Error ? e.message : "Route plan failed",
+      });
     }
   };
 
@@ -969,9 +1048,20 @@ export default function MapView() {
             endLatLon={endLonLat}
             endLabel={endLabel}
             waypoints={waypointInputs.map((w) => ({ label: w.label, latLon: w.lonLat }))}
-            onWaypointsChange={(next) =>
-              setWaypointInputs(next.map((w) => ({ label: w.label, lonLat: w.latLon ?? null })))
-            }
+            onWaypointsChange={(next) => {
+              setWaypointInputs(() => {
+                const updated = next.map((w) => ({ label: w.label, lonLat: w.latLon ?? null }));
+                // Trigger route recalculation after updating waypoints
+                const waypointCoords = updated
+                  .map((w) => w.lonLat)
+                  .filter((v): v is LonLat => Array.isArray(v));
+                if (startLonLat && endLonLat) {
+                  const all: [number, number][] = [startLonLat, ...waypointCoords, endLonLat];
+                  void planRouteMulti(all);
+                }
+                return updated;
+              });
+            }}
             onMoveWaypoint={moveWaypoint}
             onClearStart={clearStart}
             onClearEnd={clearEnd}
