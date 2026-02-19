@@ -1092,7 +1092,15 @@ export default function MapView() {
       </div>
 
       <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1400 }}>
-        <div style={panelCardStyle}>
+        <div
+          style={{
+            ...panelCardStyle,
+            maxHeight: "78vh",
+            overflowY: "auto",
+            overflowX: "hidden",
+            overscrollBehavior: "contain",
+          }}
+        >
           <MapboxRoutingPanel
             center={mapCenter}
             startLatLon={startLonLat}
