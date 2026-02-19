@@ -44,11 +44,15 @@ type RouteDebug = {
 const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "bike100-jianan",
-    name: "台北內湖｜劍南路",
-    description: "參考 bike100 台北熱門路線：內湖劍南路爬坡。",
+    name: "台北劍南路（Biji GPX）",
+    description: "來源：Cycling Biji 路線 0E370FC7-3E60-5866-6F98-55D32AF63732 GPX。",
     stops: [
-      { name: "美麗華百樂園", lonLat: [121.557678, 25.083398] },
-      { name: "劍南路捷運站", lonLat: [121.555571, 25.084684] },
+      { name: "起點（0.00 km）", lonLat: [121.554182, 25.085481] },
+      { name: "檢查點 1（0.70 km）", lonLat: [121.556467, 25.087883] },
+      { name: "檢查點 2（1.35 km）", lonLat: [121.552015, 25.090132] },
+      { name: "檢查點 3（2.24 km）", lonLat: [121.555032, 25.095251] },
+      { name: "檢查點 4（3.25 km）", lonLat: [121.556529, 25.100927] },
+      { name: "終點（4.35 km）", lonLat: [121.557973, 25.107554] },
     ],
   },
   {
@@ -132,13 +136,18 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   },
   {
     id: "bike100-rulai",
-    name: "台北陽明山系｜如來神掌（逆時針）",
-    description: "參考 bike100 台北高難度人氣路線：如來神掌。",
+    name: "自行車－如來神掌線",
+    description: "來源：Pathfinder 汝來神掌.gpx（依上傳 GPX 軌跡抽樣檢查點）。",
     stops: [
-      { name: "北投", lonLat: [121.509357, 25.140872] },
-      { name: "陽金公路", lonLat: [121.546563, 25.179866] },
-      { name: "金山", lonLat: [121.63653, 25.222204] },
-      { name: "淡金公路", lonLat: [121.447001, 25.189019] },
+      { name: "起點", lonLat: [121.53406, 25.09764] },
+      { name: "檢查點 1", lonLat: [121.56411, 25.16252] },
+      { name: "檢查點 2", lonLat: [121.61603, 25.21818] },
+      { name: "檢查點 3", lonLat: [121.58733, 25.29196] },
+      { name: "檢查點 4", lonLat: [121.53038, 25.28666] },
+      { name: "檢查點 5", lonLat: [121.49259, 25.26008] },
+      { name: "檢查點 6", lonLat: [121.45792, 25.22916] },
+      { name: "檢查點 7", lonLat: [121.53064, 25.18222] },
+      { name: "終點", lonLat: [121.52898, 25.09601] },
     ],
   },
   {
@@ -383,7 +392,7 @@ export default function MapView() {
   const [showWebcams, setShowWebcams] = useState(true);
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
-  const [routeDebug, setRouteDebug] = useState<RouteDebug | null>(null);
+  const [, setRouteDebug] = useState<RouteDebug | null>(null);
   const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
   const latestRouteReqRef = useRef<number>(0);
 
@@ -520,8 +529,10 @@ export default function MapView() {
     let windPoints: WindPoint[] = [];
     let validWindPoints: WindPoint[] = [];
     let windRequestFailed = false;
+    let windUsedSyntheticFallback = false;
+    let firstSample: [number, number][] = [];
     try {
-      const firstSample = buildSample(20);
+      firstSample = buildSample(20);
       const windData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -559,12 +570,64 @@ export default function MapView() {
           validWindPoints = retryValid;
         }
       }
+
+      // Final fallback: fetch one midpoint wind and fan it out across route sample points.
+      if (validWindPoints.length === 0 && firstSample.length > 0) {
+        const mid = firstSample[Math.floor(firstSample.length / 2)] ?? firstSample[0];
+        if (mid) {
+          const singleData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind?nocache=1", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ points: [mid] }),
+            timeoutMs: 30000,
+          });
+          const single = (Array.isArray(singleData.points) ? singleData.points : []).find(
+            (w) =>
+              Number.isFinite(w.dirDeg) &&
+              (Number.isFinite(w.speedMs) || Number.isFinite(w.speedKmh))
+          );
+          if (single) {
+            validWindPoints = firstSample.map(([lat, lon]) => ({
+              lat,
+              lon,
+              dirDeg: single.dirDeg,
+              speedMs: single.speedMs,
+              speedKmh: single.speedKmh,
+            }));
+          }
+        }
+      }
+
+      // Guaranteed fallback so arrows/colors don't disappear completely.
+      if (validWindPoints.length === 0 && firstSample.length > 0) {
+        windUsedSyntheticFallback = true;
+        validWindPoints = firstSample.map(([lat, lon]) => ({
+          lat,
+          lon,
+          dirDeg: 0,
+          speedMs: 3,
+          speedKmh: 10.8,
+        }));
+      }
       if (requestId !== latestRouteReqRef.current) return;
       setWinds(validWindPoints);
     } catch {
       windRequestFailed = true;
       if (requestId !== latestRouteReqRef.current) return;
-      setWinds([]);
+      if (firstSample.length > 0) {
+        windUsedSyntheticFallback = true;
+        setWinds(
+          firstSample.map(([lat, lon]) => ({
+            lat,
+            lon,
+            dirDeg: 0,
+            speedMs: 3,
+            speedKmh: 10.8,
+          }))
+        );
+      } else {
+        setWinds([]);
+      }
       console.error("[routing] wind request failed");
     }
 
@@ -611,6 +674,8 @@ export default function MapView() {
         : elevationValid > 0
           ? windRequestFailed
             ? "Wind request failed"
+            : windUsedSyntheticFallback
+              ? "Wind API unavailable; using fallback vectors."
             : validWindPoints.length === 0
               ? "No valid wind vectors returned"
               : undefined
@@ -1198,34 +1263,6 @@ export default function MapView() {
           <WindLegend />
         </div>
       </div>
-
-      {/* Left middle: Routing debug */}
-      {routeDebug && (
-        <div
-          style={{
-            position: "absolute",
-            left: 65,
-            top: 210,
-            zIndex: 1300,
-            ...panelCardStyle,
-            padding: 8,
-            maxWidth: 560,
-            fontSize: 12,
-            lineHeight: 1.35,
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>Routing Data</div>
-          <div>source: {routeDebug.source}</div>
-          <div>incoming points: {routeDebug.incomingCount}</div>
-          <div>merged points: {routeDebug.mergedCount}</div>
-          <div>wind points: {routeDebug.windCount}</div>
-          <div>elevation returned: {routeDebug.elevationReturned}</div>
-          <div>elevation valid: {routeDebug.elevationValid}</div>
-          <div>elevation error points: {routeDebug.elevationErrors}</div>
-          {routeDebug.message && <div style={{ color: "#b91c1c" }}>message: {routeDebug.message}</div>}
-          <div>updated: {new Date(routeDebug.updatedAt).toLocaleTimeString()}</div>
-        </div>
-      )}
 
       {/* Left bottom: Elevation panel */}
       <div style={{ position: "absolute", left: 65, bottom: 12, zIndex: 1600 }}>
