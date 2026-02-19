@@ -172,6 +172,34 @@ function MapInteraction({
 }
 
 export default function MapView() {
+  const toggleButtonStyle: React.CSSProperties = {
+    fontSize: 13,
+    fontWeight: 700,
+    padding: "6px 10px",
+    background: "rgba(15,23,42,0.9)",
+    color: "#ffffff",
+    border: "1px solid rgba(255,255,255,0.35)",
+    borderRadius: 999,
+    cursor: "pointer",
+    boxShadow: "0 6px 14px rgba(0,0,0,0.25)",
+    backdropFilter: "blur(2px)",
+  };
+  const closeButtonStyle: React.CSSProperties = {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    color: "#0f172a",
+    fontSize: 14,
+    fontWeight: 700,
+    lineHeight: "20px",
+    textAlign: "center",
+    cursor: "pointer",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+    padding: 0,
+  };
+
   // === State ===
   const [route, setRoute] = useState<LineLatLng>([]);
   const [winds, setWinds] = useState<WindPoint[]>([]);
@@ -722,7 +750,7 @@ export default function MapView() {
       </Map>
 
       {/* Left top: Webcams panel */}
-      <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1400 }}>
+      <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1600 }}>
         {showWebcams ? (
           <div
             style={{
@@ -737,7 +765,7 @@ export default function MapView() {
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
             >
               <span style={{ fontWeight: 600 }}>Webcams</span>
-              <button onClick={() => setShowWebcams(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
+              <button onClick={() => setShowWebcams(false)} style={closeButtonStyle} aria-label="Close webcams panel">
                 ✖
               </button>
             </div>
@@ -751,7 +779,7 @@ export default function MapView() {
             />
           </div>
         ) : (
-          <button onClick={() => setShowWebcams(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
+          <button onClick={() => setShowWebcams(true)} style={toggleButtonStyle}>
             Show Webcams
           </button>
         )}
@@ -819,7 +847,7 @@ export default function MapView() {
           position: "absolute",
           right: 12,
           bottom: 12,
-          zIndex: 1200,
+          zIndex: 1600,
           display: "flex",
           alignItems: "flex-end",
           gap: 8,
@@ -840,14 +868,14 @@ export default function MapView() {
                 style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
               >
                 <span style={{ fontWeight: 600 }}>Wing Sampling Segments</span>
-                <button onClick={() => setShowSegments(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
+                <button onClick={() => setShowSegments(false)} style={closeButtonStyle} aria-label="Close segments panel">
                   ✖
                 </button>
               </div>
               <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
             </div>
           ) : (
-            <button onClick={() => setShowSegments(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
+            <button onClick={() => setShowSegments(true)} style={toggleButtonStyle}>
               Show Segments
             </button>
           )}
@@ -889,7 +917,7 @@ export default function MapView() {
       )}
 
       {/* Left bottom: Elevation panel */}
-      <div style={{ position: "absolute", left: 65, bottom: 12, zIndex: 1200 }}>
+      <div style={{ position: "absolute", left: 65, bottom: 12, zIndex: 1600 }}>
         {showElevation ? (
           <div
             style={{
@@ -907,7 +935,7 @@ export default function MapView() {
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
             >
               <span style={{ fontWeight: 600 }}>Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}</span>
-              <button onClick={() => setShowElevation(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
+              <button onClick={() => setShowElevation(false)} style={closeButtonStyle} aria-label="Close elevation panel">
                 ✖
               </button>
             </div>
@@ -939,7 +967,7 @@ export default function MapView() {
             )}
           </div>
         ) : (
-          <button onClick={() => setShowElevation(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
+          <button onClick={() => setShowElevation(true)} style={toggleButtonStyle}>
             Show Elevation
           </button>
         )}
