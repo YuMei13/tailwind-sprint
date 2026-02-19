@@ -795,6 +795,30 @@ export default function MapView() {
       setPickMode("none");
       setPendingWaypointIndex(null);
       setMapCenter({ lat: (start.lat + end.lat) / 2, lon: (start.lon + end.lon) / 2 });
+      // Zoom map to fit the full preset route area.
+      const map = mapRef.current?.getMap();
+      if (map) {
+        const allLonLats: LonLat[] = [
+          [start.lon, start.lat],
+          ...waypoints.map((w) => [w.lon, w.lat] as LonLat),
+          [end.lon, end.lat],
+        ];
+        const lons = allLonLats.map((p) => p[0]);
+        const lats = allLonLats.map((p) => p[1]);
+        const minLon = Math.min(...lons);
+        const maxLon = Math.max(...lons);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        if (Number.isFinite(minLon) && Number.isFinite(maxLon) && Number.isFinite(minLat) && Number.isFinite(maxLat)) {
+          map.fitBounds(
+            [
+              [minLon, minLat],
+              [maxLon, maxLat],
+            ],
+            { padding: 80, duration: 900, maxZoom: 14 }
+          );
+        }
+      }
       writeQuery([start.lon, start.lat], [end.lon, end.lat]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load preset route";

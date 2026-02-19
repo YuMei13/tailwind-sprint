@@ -189,6 +189,8 @@ export default function MapboxRoutingPanel({
   const [waypointLists, setWaypointLists] = useState<GeoItem[][]>([]);
   const [activeIdx, setActiveIdx] = useState<{ role: Role; wpIdx?: number; idx: number } | null>(null);
   const abortMapRef = useRef<Record<string, AbortController>>({});
+  const requestSeqRef = useRef<Record<string, number>>({});
+  const confirmedLabelRef = useRef<Record<string, string>>({});
   const [selectedPresetId, setSelectedPresetId] = useState<string>(routePresets[0]?.id ?? "");
 
   useEffect(() => {
@@ -204,7 +206,31 @@ export default function MapboxRoutingPanel({
   const runSearch = useCallback(
     async (role: Role, q: string, wpIdx?: number) => {
       const key = role === "waypoint" ? `waypoint-${wpIdx ?? -1}` : role;
-      if (!q.trim()) {
+      const seq = (requestSeqRef.current[key] ?? 0) + 1;
+      requestSeqRef.current[key] = seq;
+      const trimmed = q.trim();
+      const selectedLabel =
+        role === "start"
+          ? (confirmedLabelRef.current.start ?? startLabelProp ?? "").trim()
+          : role === "end"
+            ? (confirmedLabelRef.current.end ?? endLabelProp ?? "").trim()
+            : typeof wpIdx === "number"
+              ? (confirmedLabelRef.current[`waypoint-${wpIdx}`] ?? waypoints[wpIdx]?.label ?? "").trim()
+              : "";
+      // If user has already selected this exact label, keep dropdown closed.
+      if (trimmed && selectedLabel && trimmed === selectedLabel) {
+        if (role === "start") setStartList([]);
+        else if (role === "end") setEndList([]);
+        else if (role === "waypoint" && typeof wpIdx === "number") {
+          setWaypointLists((prev) => {
+            const next = [...prev];
+            next[wpIdx] = [];
+            return next;
+          });
+        }
+        return;
+      }
+      if (!trimmed) {
         if (role === "start") setStartList([]);
         else if (role === "end") setEndList([]);
         else if (role === "waypoint" && typeof wpIdx === "number") {
@@ -221,10 +247,12 @@ export default function MapboxRoutingPanel({
       abortMapRef.current[key] = ac;
       try {
         const items = await geocodeFetch(
-          q,
+          trimmed,
           { focusLat: center.lat, focusLon: center.lon, lang: "zh-TW", limit: 5 },
           ac.signal
         );
+        // Ignore stale async responses that finished after a newer query.
+        if (requestSeqRef.current[key] !== seq) return;
         if (role === "start") setStartList(items);
         else if (role === "end") setEndList(items);
         else if (role === "waypoint" && typeof wpIdx === "number") {
@@ -236,6 +264,7 @@ export default function MapboxRoutingPanel({
         }
         setActiveIdx(items.length ? { role, wpIdx, idx: 0 } : null);
       } catch {
+        if (requestSeqRef.current[key] !== seq) return;
         if (role === "start") setStartList([]);
         else if (role === "end") setEndList([]);
         else if (role === "waypoint" && typeof wpIdx === "number") {
@@ -247,7 +276,7 @@ export default function MapboxRoutingPanel({
         }
       }
     },
-    [center.lat, center.lon]
+    [center.lat, center.lon, startLabelProp, endLabelProp, waypoints]
   );
 
   useEffect(() => {
@@ -266,12 +295,15 @@ export default function MapboxRoutingPanel({
     (role: Role, item: GeoItem, wpIdx?: number) => {
       onPick(role, item.lat, item.lon, item.name, wpIdx);
       if (role === "start") {
+        confirmedLabelRef.current.start = item.name;
         setStartQ(item.name);
         setStartList([]);
       } else if (role === "end") {
+        confirmedLabelRef.current.end = item.name;
         setEndQ(item.name);
         setEndList([]);
       } else if (role === "waypoint" && typeof wpIdx === "number") {
+        confirmedLabelRef.current[`waypoint-${wpIdx}`] = item.name;
         const newWpQueries = [...waypointQueries];
         newWpQueries[wpIdx] = item.name;
         setWaypointQueries(newWpQueries);
@@ -583,7 +615,10 @@ export default function MapboxRoutingPanel({
           <div style={box.inputRow}>
             <input
               value={startQ}
-              onChange={(e) => setStartQ(e.target.value)}
+              onChange={(e) => {
+                delete confirmedLabelRef.current.start;
+                setStartQ(e.target.value);
+              }}
               onKeyDown={(e) => onKey("start", startList, e)}
               placeholder="Starting location (Traditional Chinese supported)"
               style={box.input}
@@ -664,6 +699,7 @@ export default function MapboxRoutingPanel({
               <input
                 value={q}
                 onChange={(e) => {
+                  delete confirmedLabelRef.current[`waypoint-${i}`];
                   const newQueries = [...waypointQueries];
                   newQueries[i] = e.target.value;
                   setWaypointQueries(newQueries);
@@ -736,7 +772,10 @@ export default function MapboxRoutingPanel({
           <div style={box.inputRow}>
             <input
               value={endQ}
-              onChange={(e) => setEndQ(e.target.value)}
+              onChange={(e) => {
+                delete confirmedLabelRef.current.end;
+                setEndQ(e.target.value);
+              }}
               onKeyDown={(e) => onKey("end", endList, e)}
               placeholder="Destination (Traditional Chinese supported)"
               style={box.input}
