@@ -23,6 +23,14 @@ interface MapboxRouteResponse {
   }>;
 }
 
+class HttpError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function isValidLonLat(p: unknown): p is LonLat {
   return (
     Array.isArray(p) &&
@@ -58,16 +66,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "missing or invalid coordinates" }, { status: 400 });
     }
 
-    const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    const MAPBOX_TOKEN = process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     if (!MAPBOX_TOKEN) {
-      console.error("Mapbox Route API: missing NEXT_PUBLIC_MAPBOX_TOKEN");
+      console.error("Mapbox Route API: missing MAPBOX_ACCESS_TOKEN / NEXT_PUBLIC_MAPBOX_TOKEN");
       return NextResponse.json({ error: "Missing MAPBOX_TOKEN" }, { status: 500 });
     }
 
     const nocache = req.nextUrl.searchParams.get("nocache") === "1";
     const key = buildKey("mapbox-route", { coordinates, profile });
 
-    const data = await cacheFetchJSON<{ geometry: { type: "LineString"; coordinates: LonLat[] } }>(
+    const data = await cacheFetchJSON<{
+      geometry: { type: "LineString"; coordinates: LonLat[] };
+      waypoints: LonLat[];
+    }>(
       key,
       3600, // 1 hour cache
       async () => {
@@ -95,21 +106,27 @@ export async function POST(req: NextRequest) {
 
         if (!r.ok) {
           const txt = await r.text().catch(() => "");
-          throw new Error(`Mapbox Directions ${r.status} ${txt}`.trim());
+          throw new HttpError(r.status, `Mapbox Directions ${r.status} ${txt}`.trim());
         }
 
         const response = (await r.json()) as MapboxRouteResponse;
 
         if (response.code !== "Ok" || !response.routes || response.routes.length === 0) {
-          throw new Error(`Mapbox: ${response.code}`);
+          throw new HttpError(502, `Mapbox: ${response.code}`);
         }
 
         const route = response.routes[0];
+        const snappedWaypoints = Array.isArray(response.waypoints)
+          ? response.waypoints
+              .map((w) => w.location)
+              .filter((p): p is LonLat => isValidLonLat(p))
+          : [];
         return {
           geometry: {
             type: "LineString" as const,
             coordinates: route.geometry.coordinates,
           },
+          waypoints: snappedWaypoints,
         };
       },
       nocache
@@ -119,6 +136,9 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed";
     console.error("Mapbox Route API error:", msg);
+    if (e instanceof HttpError) {
+      return NextResponse.json({ error: e.message }, { status: e.status });
+    }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

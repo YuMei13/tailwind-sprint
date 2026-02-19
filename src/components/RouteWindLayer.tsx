@@ -1,7 +1,7 @@
 // src/components/RouteWindLayer.tsx
 "use client";
 import { Source, Layer, Marker } from "react-map-gl";
-import { windToColor } from "@/lib/wind";
+import { routeWindAngleToColor } from "@/lib/wind";
 import { getArrowIcon } from "@/lib/windIcons";
 import { haversine } from "@/lib/geo";
 
@@ -26,6 +26,41 @@ type Props = {
 
 const FALLBACK_COLOR = "#6b7280";
 
+function normalizeDeg(v: number) {
+  const x = v % 360;
+  return x < 0 ? x + 360 : x;
+}
+
+function bearingDeg(from: LatLng, to: LatLng): number {
+  const lat1 = (from[0] * Math.PI) / 180;
+  const lat2 = (to[0] * Math.PI) / 180;
+  const dLon = ((to[1] - from[1]) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return normalizeDeg((Math.atan2(y, x) * 180) / Math.PI);
+}
+
+function smallestAngleDiffDeg(a: number, b: number): number {
+  const d = Math.abs(normalizeDeg(a) - normalizeDeg(b));
+  return d > 180 ? 360 - d : d;
+}
+
+function nearestWindDirDeg(winds: WindPoint[], p: LatLng): number | undefined {
+  let bestD2 = Number.POSITIVE_INFINITY;
+  let best: number | undefined = undefined;
+  for (const w of winds) {
+    if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon) || !Number.isFinite(w.dirDeg)) continue;
+    const dx = w.lat - p[0];
+    const dy = w.lon - p[1];
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = w.dirDeg as number;
+    }
+  }
+  return best;
+}
+
 function cumulativeDistances(route: LatLng[]): number[] {
   const n = route.length;
   const cum: number[] = new Array(n).fill(0);
@@ -35,21 +70,6 @@ function cumulativeDistances(route: LatLng[]): number[] {
     cum[i] = cum[i - 1] + haversine(a, b);
   }
   return cum;
-}
-
-function nearestIndex(route: LatLng[], p: LatLng): number {
-  let best = 0;
-  let bestD = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < route.length; i++) {
-    const dx = route[i][0] - p[0];
-    const dy = route[i][1] - p[1];
-    const d2 = dx * dx + dy * dy;
-    if (d2 < bestD) {
-      bestD = d2;
-      best = i;
-    }
-  }
-  return best;
 }
 
 function sliceBetween(route: LatLng[], cum: number[], d0: number, d1: number): LatLng[] {
@@ -130,25 +150,6 @@ export default function RouteWindLayer({
   const segLen = Math.max(50, segmentMeters);
   const segCount = Math.max(1, Math.ceil(total / segLen));
 
-  const buckets: number[][] = Array.from({ length: segCount }, () => []);
-  for (const w of winds) {
-    const sp =
-      typeof w.speedMs === "number"
-        ? w.speedMs
-        : typeof w.speedKmh === "number"
-          ? w.speedKmh / 3.6
-          : undefined;
-    if (!Number.isFinite(sp)) continue;
-    const idx = nearestIndex(route, [w.lat, w.lon]);
-    const d = cum[idx];
-    const k = Math.min(segCount - 1, Math.max(0, Math.floor(d / segLen)));
-    buckets[k].push(sp as number);
-  }
-
-  const segAvg: Array<number | undefined> = buckets.map((arr) =>
-    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : undefined
-  );
-
   const segments: { pts: LatLng[]; color: string; idx: number }[] = [];
   for (let k = 0; k < segCount; k++) {
     const d0 = k * segLen;
@@ -156,8 +157,14 @@ export default function RouteWindLayer({
     const pts = sliceBetween(route, cum, d0, d1);
     if (pts.length < 2) continue;
 
-    const sp = segAvg[k];
-    const color = typeof sp === "number" ? windToColor(sp) : FALLBACK_COLOR;
+    const midPt = pts[Math.floor(pts.length / 2)] ?? pts[0];
+    const windDir = nearestWindDirDeg(winds, midPt);
+    let color = FALLBACK_COLOR;
+    if (typeof windDir === "number") {
+      const routeDir = bearingDeg(pts[0], pts[pts.length - 1]);
+      const angle = smallestAngleDiffDeg(routeDir, windDir);
+      color = routeWindAngleToColor(angle);
+    }
 
     segments.push({ pts, color, idx: k });
   }

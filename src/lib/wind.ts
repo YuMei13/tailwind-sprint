@@ -21,6 +21,19 @@ export function windToColor(speedMS: number) {
     { max: 10,  color: "#f97316", label: "6–10" },
     { max: Infinity, color: "#ef4444", label: "≥10" },
   ];
+
+  // 路線方向 vs 風向夾角（度）→ 顏色
+  export function routeWindAngleToColor(angleDeg: number) {
+    if (angleDeg < 45) return "#2563eb";   // blue
+    if (angleDeg < 135) return "#f97316";  // orange
+    return "#ef4444";                      // red
+  }
+
+  export const ROUTE_WIND_ANGLE_BINS = [
+    { max: 45, color: "#2563eb", label: "0–45° (same-ish direction)" },
+    { max: 135, color: "#f97316", label: "45–135° (crosswind-ish)" },
+    { max: 180, color: "#ef4444", label: "135–180° (opposite-ish)" },
+  ];
   
   
   

@@ -10,15 +10,24 @@ import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import SegmentationControls from "@/components/SegmentationControls";
 import WebcamsPanel, { WebcamItem } from "@/components/WebcamsPanel";
-import MapboxDirectionsControl from "@/components/MapboxDirectionsControl";
+import MapboxRoutingPanel, { type Role as RoutingPanelRole } from "@/components/MapboxRoutingPanel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type LatLng = [number, number]; // [lat, lon]
 type LineLatLng = LatLng[];
+type LonLat = [number, number];
 
 type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
-type RouteSource = "planned" | "mapbox-directions";
+type RouteSource = "planned";
+type WaypointInput = { label: string; lonLat: LonLat | null };
+type PresetStop = { name: string; lonLat: LonLat };
+type RoutePreset = {
+  id: string;
+  name: string;
+  description: string;
+  stops: PresetStop[];
+};
 type RouteDebug = {
   source: RouteSource;
   incomingCount: number;
@@ -32,6 +41,145 @@ type RouteDebug = {
   message?: string;
 };
 
+const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
+  {
+    id: "bike100-jianan",
+    name: "台北劍南路（Biji GPX）",
+    description: "來源：Cycling Biji 路線 0E370FC7-3E60-5866-6F98-55D32AF63732 GPX。",
+    stops: [
+      { name: "起點（0.00 km）", lonLat: [121.554182, 25.085481] },
+      { name: "檢查點 1（0.70 km）", lonLat: [121.556467, 25.087883] },
+      { name: "檢查點 2（1.35 km）", lonLat: [121.552015, 25.090132] },
+      { name: "檢查點 3（2.24 km）", lonLat: [121.555032, 25.095251] },
+      { name: "檢查點 4（3.25 km）", lonLat: [121.556529, 25.100927] },
+      { name: "終點（4.35 km）", lonLat: [121.557973, 25.107554] },
+    ],
+  },
+  {
+    id: "bike100-nanshen",
+    name: "台北南港｜南深深南",
+    description: "參考 bike100 台北熱門路線：南港南深路段。",
+    stops: [
+      { name: "南港展覽館", lonLat: [121.617219, 25.054569] },
+      { name: "南深路", lonLat: [121.617473, 25.033346] },
+      { name: "深南路", lonLat: [121.621839, 25.010681] },
+    ],
+  },
+  {
+    id: "bike100-zhongshe",
+    name: "台北士林｜中社路",
+    description: "參考 bike100 台北路線：士林中社路。",
+    stops: [
+      { name: "國立故宮博物院", lonLat: [121.549134, 25.102039] },
+      { name: "中社路一段", lonLat: [121.560807, 25.106856] },
+    ],
+  },
+  {
+    id: "bike100-maokong",
+    name: "台北木柵｜貓空（順時針）",
+    description: "參考 bike100 台北路線：木柵上貓空。",
+    stops: [
+      { name: "木柵動物園", lonLat: [121.581081, 24.998674] },
+      { name: "貓空纜車站", lonLat: [121.587892, 24.968622] },
+      { name: "指南宮", lonLat: [121.589685, 24.978929] },
+    ],
+  },
+  {
+    id: "bike100-houshanyue",
+    name: "台北木柵｜猴山岳",
+    description: "參考 bike100 台北熱門路線：木柵猴山岳。",
+    stops: [
+      { name: "木柵動物園", lonLat: [121.581081, 24.998674] },
+      { name: "草湳大榕樹", lonLat: [121.608451, 24.97011] },
+      { name: "猴山岳步道口", lonLat: [121.6215, 24.9736] },
+    ],
+  },
+  {
+    id: "bike100-tunshan-nav",
+    name: "台北天母｜中山北路上大屯山助航站",
+    description: "參考 bike100 台北進階路線：中山北路上大屯助航站。",
+    stops: [
+      { name: "天母運動公園", lonLat: [121.534611, 25.114684] },
+      { name: "中山北路七段", lonLat: [121.530516, 25.119921] },
+      { name: "大屯山助航站", lonLat: [121.522727, 25.175209] },
+    ],
+  },
+  {
+    id: "bike100-haima",
+    name: "台北陽明山系｜海馬（逆時針）",
+    description: "參考 bike100 高評分台北路線：陽明山海馬。",
+    stops: [
+      { name: "至善公園", lonLat: [121.538985, 25.098452] },
+      { name: "風櫃嘴", lonLat: [121.5996, 25.1329] },
+      { name: "萬里", lonLat: [121.689987, 25.178183] },
+    ],
+  },
+  {
+    id: "bike100-flying-cat",
+    name: "台北石碇｜飛躍的貓咪（順時針）",
+    description: "參考 bike100 高評分台北路線：石碇飛躍的貓咪。",
+    stops: [
+      { name: "石碇老街", lonLat: [121.659961, 24.991052] },
+      { name: "平溪", lonLat: [121.736206, 25.025877] },
+      { name: "菁桐", lonLat: [121.72512, 25.02285] },
+    ],
+  },
+  {
+    id: "bike100-ym-serial",
+    name: "台北陽明山景連騎｜文大後山→大屯助航站→中湖戰備道",
+    description: "參考 bike100 台北高評分連騎路線。",
+    stops: [
+      { name: "文化大學", lonLat: [121.539019, 25.135783] },
+      { name: "大屯山助航站", lonLat: [121.522727, 25.175209] },
+      { name: "中湖戰備道", lonLat: [121.576, 25.1678] },
+    ],
+  },
+  {
+    id: "bike100-rulai",
+    name: "自行車－如來神掌線",
+    description: "來源：Pathfinder 汝來神掌.gpx（依上傳 GPX 軌跡抽樣檢查點）。",
+    stops: [
+      { name: "起點", lonLat: [121.53406, 25.09764] },
+      { name: "檢查點 1", lonLat: [121.56411, 25.16252] },
+      { name: "檢查點 2", lonLat: [121.61603, 25.21818] },
+      { name: "檢查點 3", lonLat: [121.58733, 25.29196] },
+      { name: "檢查點 4", lonLat: [121.53038, 25.28666] },
+      { name: "檢查點 5", lonLat: [121.49259, 25.26008] },
+      { name: "檢查點 6", lonLat: [121.45792, 25.22916] },
+      { name: "檢查點 7", lonLat: [121.53064, 25.18222] },
+      { name: "終點", lonLat: [121.52898, 25.09601] },
+    ],
+  },
+  {
+    id: "rwgps-49826274",
+    name: "環大臺北自行車挑戰（RWGPS）",
+    description: "來源：Ride with GPS 路線 49826274。",
+    stops: [
+      { name: "起點（板橋）", lonLat: [121.46942, 25.00955] },
+      { name: "深坑", lonLat: [121.69745, 25.01866] },
+      { name: "福隆", lonLat: [121.92695, 25.02745] },
+      { name: "基隆", lonLat: [121.74075, 25.13611] },
+      { name: "老梅", lonLat: [121.54876, 25.28943] },
+      { name: "關渡", lonLat: [121.448557, 25.165314] },
+      { name: "終點（板橋）", lonLat: [121.46943, 25.00953] },
+    ],
+  },
+  {
+    id: "rwgps-38179892",
+    name: "環小台北自行車道（RWGPS）",
+    description: "來源：Ride with GPS 路線 38179892。",
+    stops: [
+      { name: "起點（文山）", lonLat: [121.53943, 24.98836] },
+      { name: "新店溪右岸自行車道", lonLat: [121.53062, 25.01035] },
+      { name: "淡水線自行車道", lonLat: [121.50578, 25.05247] },
+      { name: "基隆河左岸自行車道", lonLat: [121.54351, 25.07354] },
+      { name: "南港（研究院路）", lonLat: [121.61659, 25.05521] },
+      { name: "景美溪右岸自行車道", lonLat: [121.53997, 24.98834] },
+      { name: "終點（文山）", lonLat: [121.53844, 24.98843] },
+    ],
+  },
+];
+
 // Validate coordinates
 function isValidCoordinate(lat: number, lon: number): boolean {
   return (
@@ -43,15 +191,6 @@ function isValidCoordinate(lat: number, lon: number): boolean {
     lon <= 180 &&
     !(lat === 0 && lon === 0)
   );
-}
-
-function toLonLat(coord: [number, number]): [number, number] | null {
-  const [a, b] = coord;
-  const aLatLon = Math.abs(a) <= 90 && Math.abs(b) <= 180;
-  const aLonLat = Math.abs(a) <= 180 && Math.abs(b) <= 90;
-  if (aLonLat && !aLatLon) return [a, b];
-  if (aLatLon) return [b, a];
-  return null;
 }
 
 // Fetch JSON with retry and timeout
@@ -179,6 +318,47 @@ function MapInteraction({
 }
 
 export default function MapView() {
+  const toggleButtonStyle: React.CSSProperties = {
+    fontSize: 13,
+    fontWeight: 700,
+    padding: "6px 10px",
+    background: "rgba(15,23,42,0.9)",
+    color: "#ffffff",
+    border: "1px solid rgba(255,255,255,0.35)",
+    borderRadius: 999,
+    cursor: "pointer",
+    boxShadow: "0 6px 14px rgba(0,0,0,0.25)",
+    backdropFilter: "blur(2px)",
+  };
+  const closeButtonStyle: React.CSSProperties = {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    color: "#0f172a",
+    fontSize: 14,
+    fontWeight: 700,
+    lineHeight: "20px",
+    textAlign: "center",
+    cursor: "pointer",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+    padding: 0,
+  };
+  const panelCardStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,0.95)",
+    color: "#1e293b",
+    borderRadius: 8,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    padding: 8,
+  };
+  const panelHeaderStyle: React.CSSProperties = {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  };
+
   // === State ===
   const [route, setRoute] = useState<LineLatLng>([]);
   const [winds, setWinds] = useState<WindPoint[]>([]);
@@ -195,11 +375,13 @@ export default function MapView() {
   // Start/End [lon, lat]
   const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
   const [endLonLat, setEndLonLat] = useState<[number, number] | null>(null);
-  // Waypoints [lon, lat]
-  const [waypoints, setWaypoints] = useState<[number, number][]>([]);
+  const [startLabel, setStartLabel] = useState("");
+  const [endLabel, setEndLabel] = useState("");
+  const [waypointInputs, setWaypointInputs] = useState<WaypointInput[]>([]);
 
   // Map pick mode
   const [pickMode, setPickMode] = useState<"none" | "start" | "end" | "waypoint">("none");
+  const [pendingWaypointIndex, setPendingWaypointIndex] = useState<number | null>(null);
 
   // Panel interaction
   const [cursorPt, setCursorPt] = useState<{ lat: number; lon: number } | null>(null);
@@ -210,7 +392,9 @@ export default function MapView() {
   const [showWebcams, setShowWebcams] = useState(true);
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
-  const [routeDebug, setRouteDebug] = useState<RouteDebug | null>(null);
+  const [, setRouteDebug] = useState<RouteDebug | null>(null);
+  const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
+  const latestRouteReqRef = useRef<number>(0);
 
   const mapRef = useRef<MapRef | null>(null);
 
@@ -263,43 +447,50 @@ export default function MapView() {
     router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
   };
 
-  // Fetch single leg coordinates using Mapbox Directions API
-  async function fetchLegCoords(
-    a: [number, number],
-    b: [number, number]
-  ): Promise<[number, number][]> {
-    const r = await fetchJSON<{ geometry: { type: string; coordinates: [number, number][] } }>("/api/mapbox-route", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ start: a, end: b, profile: "cycling" }),
-      timeoutMs: 45000,
-    });
-    const coordsRaw = r?.geometry?.coordinates ?? [];
-    return coordsRaw.filter(([lon, lat]) => isValidCoordinate(lat, lon));
+  async function fetchLegCoords(a: LonLat, b: LonLat): Promise<LonLat[]> {
+    const r = await fetchJSON<{
+      geometry: { type: string; coordinates: [number, number][] };
+    }>("/api/mapbox-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coordinates: [a, b], profile: "cycling" }),
+        timeoutMs: 45000,
+      });
+    return (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
+      isValidCoordinate(lat, lon)
+    );
   }
 
-  // Normalize a full route by sending raw coordinates to Mapbox route API
-  async function fetchRouteFromCoords(coords: [number, number][]): Promise<[number, number][]> {
-    const r = await fetchJSON<{ geometry: { type: string; coordinates: [number, number][] } }>("/api/mapbox-route", {
+  async function fetchRouteForAllPoints(points: LonLat[]): Promise<LonLat[]> {
+    const r = await fetchJSON<{
+      geometry: { type: string; coordinates: [number, number][] };
+    }>("/api/mapbox-route", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: coords, profile: "cycling" }),
+      body: JSON.stringify({ coordinates: points, profile: "cycling" }),
       timeoutMs: 45000,
     });
-    const coordsRaw = r?.geometry?.coordinates ?? [];
-    return coordsRaw.filter(([lon, lat]) => isValidCoordinate(lat, lon));
+    return (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
+      isValidCoordinate(lat, lon)
+    );
+  }
+
+  function sameLonLat(a: LonLat, b: LonLat) {
+    return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
   }
 
   // Multi-point route planning
   const applyRouteFromLonLat = async (
     merged: [number, number][],
-    meta: { source: RouteSource; incomingCount: number }
+    meta: { source: RouteSource; incomingCount: number },
+    requestId: number
   ) => {
-    // Clear old wind arrows immediately
-    setWinds([]);
-    setElevPts([]);
+    if (requestId !== latestRouteReqRef.current) return;
+
+    // Keep existing wind/elevation until fresh results are ready.
 
     if (merged.length < 2) {
+      if (requestId !== latestRouteReqRef.current) return;
       setRoute([]);
       setWinds([]);
       setElevPts([]);
@@ -320,30 +511,123 @@ export default function MapView() {
 
     // Set route (convert to [lat, lon])
     const line: [number, number][] = merged.map(([lon, lat]) => [lat, lon]);
+    if (requestId !== latestRouteReqRef.current) return;
     setRoute(line);
 
-    // Wind: sample ~40 points
-    const step = Math.max(1, Math.floor(merged.length / 40));
-    const sample = merged.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon]);
-    const last = merged[merged.length - 1];
-    const lastS = sample[sample.length - 1];
-    if (!lastS || lastS[0] !== last[1] || lastS[1] !== last[0]) {
-      sample.push([last[1], last[0]]);
-    }
+    // Wind: sample route and retry with fewer points if response has no valid wind vectors.
+    const buildSample = (targetCount: number): [number, number][] => {
+      const step = Math.max(1, Math.floor(merged.length / targetCount));
+      const pts = merged.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon] as [number, number]);
+      const last = merged[merged.length - 1];
+      const lastS = pts[pts.length - 1];
+      if (!lastS || lastS[0] !== last[1] || lastS[1] !== last[0]) {
+        pts.push([last[1], last[0]]);
+      }
+      return pts;
+    };
+
     let windPoints: WindPoint[] = [];
+    let validWindPoints: WindPoint[] = [];
     let windRequestFailed = false;
+    let windUsedSyntheticFallback = false;
+    let firstSample: [number, number][] = [];
     try {
+      firstSample = buildSample(20);
       const windData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ points: sample }),
+        body: JSON.stringify({ points: firstSample }),
         timeoutMs: 30000,
       });
       windPoints = Array.isArray(windData.points) ? windData.points : [];
-      setWinds(windPoints);
+      validWindPoints = windPoints.filter(
+        (w) =>
+          Number.isFinite(w.lat) &&
+          Number.isFinite(w.lon) &&
+          Number.isFinite(w.dirDeg) &&
+          (Number.isFinite(w.speedMs) || Number.isFinite(w.speedKmh))
+      );
+
+      // Retry once with fewer points when first pass has no usable vectors.
+      if (validWindPoints.length === 0) {
+        const retrySample = buildSample(8);
+        const retryData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind?nocache=1", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ points: retrySample }),
+          timeoutMs: 30000,
+        });
+        const retryPoints = Array.isArray(retryData.points) ? retryData.points : [];
+        const retryValid = retryPoints.filter(
+          (w) =>
+            Number.isFinite(w.lat) &&
+            Number.isFinite(w.lon) &&
+            Number.isFinite(w.dirDeg) &&
+            (Number.isFinite(w.speedMs) || Number.isFinite(w.speedKmh))
+        );
+        if (retryValid.length > 0) {
+          windPoints = retryPoints;
+          validWindPoints = retryValid;
+        }
+      }
+
+      // Final fallback: fetch one midpoint wind and fan it out across route sample points.
+      if (validWindPoints.length === 0 && firstSample.length > 0) {
+        const mid = firstSample[Math.floor(firstSample.length / 2)] ?? firstSample[0];
+        if (mid) {
+          const singleData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind?nocache=1", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ points: [mid] }),
+            timeoutMs: 30000,
+          });
+          const single = (Array.isArray(singleData.points) ? singleData.points : []).find(
+            (w) =>
+              Number.isFinite(w.dirDeg) &&
+              (Number.isFinite(w.speedMs) || Number.isFinite(w.speedKmh))
+          );
+          if (single) {
+            validWindPoints = firstSample.map(([lat, lon]) => ({
+              lat,
+              lon,
+              dirDeg: single.dirDeg,
+              speedMs: single.speedMs,
+              speedKmh: single.speedKmh,
+            }));
+          }
+        }
+      }
+
+      // Guaranteed fallback so arrows/colors don't disappear completely.
+      if (validWindPoints.length === 0 && firstSample.length > 0) {
+        windUsedSyntheticFallback = true;
+        validWindPoints = firstSample.map(([lat, lon]) => ({
+          lat,
+          lon,
+          dirDeg: 0,
+          speedMs: 3,
+          speedKmh: 10.8,
+        }));
+      }
+      if (requestId !== latestRouteReqRef.current) return;
+      setWinds(validWindPoints);
     } catch {
       windRequestFailed = true;
-      setWinds([]);
+      if (requestId !== latestRouteReqRef.current) return;
+      if (firstSample.length > 0) {
+        windUsedSyntheticFallback = true;
+        setWinds(
+          firstSample.map(([lat, lon]) => ({
+            lat,
+            lon,
+            dirDeg: 0,
+            speedMs: 3,
+            speedKmh: 10.8,
+          }))
+        );
+      } else {
+        setWinds([]);
+      }
       console.error("[routing] wind request failed");
     }
 
@@ -358,16 +642,20 @@ export default function MapView() {
         timeoutMs: 30000,
       });
       elevationPoints = Array.isArray(elevData.points) ? elevData.points : [];
-      setElevPts(elevationPoints);
+      if (requestId !== latestRouteReqRef.current) return;
+      if (elevationPoints.length > 0) {
+        setElevPts(elevationPoints);
+      }
       if (elevationPoints.length > 0) {
         setShowElevation(true);
       }
     } catch (err) {
       elevationRequestFailed = true;
-      setElevPts([]);
+      if (requestId !== latestRouteReqRef.current) return;
       console.error("[routing] elevation request failed", err instanceof Error ? err.message : String(err));
     }
 
+    if (requestId !== latestRouteReqRef.current) return;
     const sampleLonLat = [...merged.slice(0, 3), ...merged.slice(-3)];
     const elevationValid = elevationPoints.filter((p) => typeof p.elevation === "number").length;
     const elevationErrors = elevationPoints.filter((p) => p.error).length;
@@ -376,7 +664,7 @@ export default function MapView() {
       incomingCount: meta.incomingCount,
       mergedCount: merged.length,
       sampleLonLat,
-      windCount: windPoints.length,
+      windCount: validWindPoints.length,
       elevationReturned: elevationPoints.length,
       elevationValid,
       elevationErrors,
@@ -386,7 +674,11 @@ export default function MapView() {
         : elevationValid > 0
           ? windRequestFailed
             ? "Wind request failed"
-            : undefined
+            : windUsedSyntheticFallback
+              ? "Wind API unavailable; using fallback vectors."
+            : validWindPoints.length === 0
+              ? "No valid wind vectors returned"
+              : undefined
           : "Elevation API returned no numeric elevations",
     });
 
@@ -403,31 +695,266 @@ export default function MapView() {
   const planRouteMulti = async (points: [number, number][]) => {
     try {
       if (points.length < 2) return;
-
-      const merged: [number, number][] = [];
+      const requestId = ++latestRouteReqRef.current;
+      const merged: LonLat[] = [];
       for (let i = 0; i < points.length - 1; i++) {
-        const leg = await fetchLegCoords(points[i], points[i + 1]);
-        if (!leg.length) continue;
-        if (merged.length) {
-          merged.push(...leg.slice(1));
-        } else {
-          merged.push(...leg);
+        let leg: LonLat[] = [];
+        try {
+          leg = await fetchLegCoords(points[i], points[i + 1]);
+        } catch {
+          // Keep trying other legs; we'll fallback later if needed.
+          leg = [];
         }
+        if (requestId !== latestRouteReqRef.current) return;
+        if (leg.length < 2) continue;
+        if (merged.length === 0) {
+          merged.push(...leg);
+          continue;
+        }
+        const first = leg[0];
+        const tail = sameLonLat(merged[merged.length - 1], first) ? leg.slice(1) : leg;
+        merged.push(...tail);
       }
-      await applyRouteFromLonLat(merged, { source: "planned", incomingCount: merged.length });
+      if (merged.length < 2) {
+        // Fallback 1: one-shot Mapbox route for all points
+        let oneShot: LonLat[] = [];
+        try {
+          oneShot = await fetchRouteForAllPoints(points);
+        } catch {
+          oneShot = [];
+        }
+        if (requestId !== latestRouteReqRef.current) return;
+
+        if (oneShot.length >= 2) {
+          await applyRouteFromLonLat(
+            oneShot,
+            { source: "planned", incomingCount: points.length },
+            requestId
+          );
+          setRouteDebug((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  updatedAt: new Date().toISOString(),
+                  message: "Some legs failed; used one-shot route fallback.",
+                }
+              : prev
+          );
+          return;
+        }
+
+        // Fallback 2: straight polyline so user always sees response
+        const straight = points.filter(([lon, lat]) => isValidCoordinate(lat, lon));
+        if (straight.length >= 2) {
+          await applyRouteFromLonLat(
+            straight,
+            { source: "planned", incomingCount: points.length },
+            requestId
+          );
+          setRouteDebug((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  updatedAt: new Date().toISOString(),
+                  message: "Routing API failed; showing straight-line fallback.",
+                }
+              : prev
+          );
+          return;
+        }
+
+        throw new Error("No valid route legs returned for input stop order");
+      }
+      await applyRouteFromLonLat(
+        merged,
+        { source: "planned", incomingCount: points.length },
+        requestId
+      );
     } catch (e) {
       console.error("Route plan failed", e);
+      setRouteDebug({
+        source: "planned",
+        incomingCount: points.length,
+        mergedCount: 0,
+        sampleLonLat: points.slice(0, 2) as [number, number][],
+        windCount: 0,
+        elevationReturned: 0,
+        elevationValid: 0,
+        elevationErrors: 0,
+        updatedAt: new Date().toISOString(),
+        message: e instanceof Error ? e.message : "Route plan failed",
+      });
+    }
+  };
+
+  const moveWaypoint = (fromIndex: number, toIndex: number) => {
+    setWaypointInputs((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length) return prev;
+      if (toIndex < 0 || toIndex >= prev.length) return prev;
+      if (fromIndex === toIndex) return prev;
+      const next = [...prev];
+      const [moving] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moving);
+      return next;
+    });
+  };
+
+  const beginMapPick = (role: "start" | "end" | "waypoint", wpIdx?: number) => {
+    if (role === "waypoint") {
+      setPendingWaypointIndex(typeof wpIdx === "number" ? wpIdx : null);
+      setPickMode("waypoint");
+      return;
+    }
+    setPendingWaypointIndex(null);
+    setPickMode(role);
+  };
+
+  const clearStart = () => {
+    setStartLonLat(null);
+    setStartLabel("");
+    writeQuery(null, endLonLat);
+    setPickMode("none");
+    setPendingWaypointIndex(null);
+  };
+
+  const clearEnd = () => {
+    setEndLonLat(null);
+    setEndLabel("");
+    writeQuery(startLonLat, null);
+    setPickMode("none");
+    setPendingWaypointIndex(null);
+  };
+
+  const moveStartDown = () => {
+    if (!startLonLat || waypointInputs.length === 0) return;
+    const first = waypointInputs[0];
+    if (!first.lonLat) return;
+    const oldStart = startLonLat;
+    const oldStartLabel = startLabel || `${startLonLat[1].toFixed(5)}, ${startLonLat[0].toFixed(5)}`;
+    setStartLonLat(first.lonLat);
+    setStartLabel(first.label || `${first.lonLat[1].toFixed(5)}, ${first.lonLat[0].toFixed(5)}`);
+    setWaypointInputs((prev) => {
+      if (prev.length === 0) return prev;
+      const next = [...prev];
+      next[0] = { label: oldStartLabel, lonLat: oldStart };
+      return next;
+    });
+  };
+
+  const moveEndUp = () => {
+    if (!endLonLat || waypointInputs.length === 0) return;
+    const lastIdx = waypointInputs.length - 1;
+    const last = waypointInputs[lastIdx];
+    if (!last.lonLat) return;
+    const oldEnd = endLonLat;
+    const oldEndLabel = endLabel || `${endLonLat[1].toFixed(5)}, ${endLonLat[0].toFixed(5)}`;
+    setEndLonLat(last.lonLat);
+    setEndLabel(last.label || `${last.lonLat[1].toFixed(5)}, ${last.lonLat[0].toFixed(5)}`);
+    setWaypointInputs((prev) => {
+      if (prev.length === 0) return prev;
+      const next = [...prev];
+      next[lastIdx] = { label: oldEndLabel, lonLat: oldEnd };
+      return next;
+    });
+  };
+
+  const applyRoutePreset = async (presetId: string) => {
+    const preset = TAIPEI_ROUTE_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setApplyingPresetId(presetId);
+    try {
+      const points = preset.stops.map((s) => ({
+        name: s.name,
+        lat: s.lonLat[1],
+        lon: s.lonLat[0],
+      }));
+      if (points.length < 2) {
+        throw new Error("Could not resolve enough stops for this preset.");
+      }
+      const start = points[0];
+      const end = points[points.length - 1];
+      const waypoints = points.slice(1, -1);
+
+      setStartLonLat([start.lon, start.lat]);
+      setStartLabel(start.name);
+      setEndLonLat([end.lon, end.lat]);
+      setEndLabel(end.name);
+      setWaypointInputs(
+        waypoints.map((w) => ({
+          label: w.name,
+          lonLat: [w.lon, w.lat] as LonLat,
+        }))
+      );
+      setPickMode("none");
+      setPendingWaypointIndex(null);
+      setMapCenter({ lat: (start.lat + end.lat) / 2, lon: (start.lon + end.lon) / 2 });
+      // Zoom map to fit the full preset route area.
+      const map = mapRef.current?.getMap();
+      if (map) {
+        const allLonLats: LonLat[] = [
+          [start.lon, start.lat],
+          ...waypoints.map((w) => [w.lon, w.lat] as LonLat),
+          [end.lon, end.lat],
+        ];
+        const lons = allLonLats.map((p) => p[0]);
+        const lats = allLonLats.map((p) => p[1]);
+        const minLon = Math.min(...lons);
+        const maxLon = Math.max(...lons);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        if (Number.isFinite(minLon) && Number.isFinite(maxLon) && Number.isFinite(minLat) && Number.isFinite(maxLat)) {
+          map.fitBounds(
+            [
+              [minLon, minLat],
+              [maxLon, maxLat],
+            ],
+            { padding: 80, duration: 900, maxZoom: 14 }
+          );
+        }
+      }
+      writeQuery([start.lon, start.lat], [end.lon, end.lat]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load preset route";
+      setRouteDebug((prev) => ({
+        source: "planned",
+        incomingCount: prev?.incomingCount ?? 0,
+        mergedCount: prev?.mergedCount ?? 0,
+        sampleLonLat: prev?.sampleLonLat ?? [],
+        windCount: prev?.windCount ?? 0,
+        elevationReturned: prev?.elevationReturned ?? 0,
+        elevationValid: prev?.elevationValid ?? 0,
+        elevationErrors: prev?.elevationErrors ?? 0,
+        updatedAt: new Date().toISOString(),
+        message: msg,
+      }));
+    } finally {
+      setApplyingPresetId(null);
     }
   };
 
   // Plan route when start/end change
   useEffect(() => {
+    const waypointCoords = waypointInputs
+      .map((w) => w.lonLat)
+      .filter((v): v is LonLat => Array.isArray(v));
     if (startLonLat && endLonLat) {
-      const all: [number, number][] = [startLonLat, ...waypoints, endLonLat];
+      const all: [number, number][] = [startLonLat, ...waypointCoords, endLonLat];
       void planRouteMulti(all);
+      return;
     }
+    setRoute([]);
+    setWinds([]);
+    setElevPts([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startLonLat, endLonLat, JSON.stringify(waypoints)]);
+  }, [startLonLat, endLonLat, JSON.stringify(waypointInputs)]);
+
+  const displayWaypoints = useMemo(
+    () =>
+      waypointInputs
+        .map((wp, idx) => ({ idx, lonLat: wp.lonLat }))
+        .filter((wp): wp is { idx: number; lonLat: LonLat } => Array.isArray(wp.lonLat)),
+    [waypointInputs]
+  );
 
   // Fly to target
   useEffect(() => {
@@ -449,18 +976,6 @@ export default function MapView() {
       duration: 800,
     });
   }, [webcamFlyTarget]);
-
-  const routeGeoJSON = useMemo(() => {
-    if (route.length < 2) return null;
-    return {
-      type: "Feature" as const,
-      geometry: {
-        type: "LineString" as const,
-        coordinates: route.map(([lat, lon]) => [lon, lat]),
-      },
-      properties: {},
-    };
-  }, [route]);
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
@@ -495,19 +1010,36 @@ export default function MapView() {
             const v: [number, number] = [lon, lat];
             if (role === "start") {
               setStartLonLat(v);
+              setStartLabel(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
               writeQuery(v, endLonLat);
             } else if (role === "end") {
               setEndLonLat(v);
+              setEndLabel(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
               writeQuery(startLonLat, v);
             } else {
-              setWaypoints((prev) => [...prev, v]);
+              setWaypointInputs((prev) => {
+                if (typeof pendingWaypointIndex === "number") {
+                  const next = [...prev];
+                  while (next.length <= pendingWaypointIndex) {
+                    next.push({ label: `Stop ${next.length + 1}`, lonLat: null });
+                  }
+                  next[pendingWaypointIndex] = {
+                    label: `${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+                    lonLat: v,
+                  };
+                  return next;
+                }
+                return [
+                  ...prev,
+                  { label: `${lat.toFixed(5)}, ${lon.toFixed(5)}`, lonLat: v },
+                ];
+              });
             }
-            const s = role === "start" ? v : startLonLat;
-            const e = role === "end" ? v : endLonLat;
-            const wps = role === "waypoint" ? [...waypoints, v] : waypoints;
-            if (s && e) void planRouteMulti([s, ...wps, e]);
           }}
-          onDone={() => setPickMode("none")}
+          onDone={() => {
+            setPickMode("none");
+            setPendingWaypointIndex(null);
+          }}
         />
 
         {/* Start marker */}
@@ -521,15 +1053,15 @@ export default function MapView() {
         )}
 
         {/* Waypoint markers */}
-        {waypoints.map(([lon, lat], i) => (
+        {displayWaypoints.map(({ idx, lonLat: [lon, lat] }) => (
           <Marker
-            key={`wp-${i}`}
+            key={`wp-${idx}`}
             longitude={lon}
             latitude={lat}
             color="#f59e0b"
             onClick={(e) => {
               e.originalEvent.stopPropagation();
-              setWaypoints((prev) => prev.filter((_, idx) => idx !== i));
+              setWaypointInputs((prev) => prev.filter((_, i) => i !== idx));
             }}
           />
         ))}
@@ -544,21 +1076,7 @@ export default function MapView() {
           />
         ))}
 
-        {/* Route line */}
-        {routeGeoJSON && (
-          <Source id="route" type="geojson" data={routeGeoJSON}>
-            <Layer
-              id="route-line"
-              type="line"
-              paint={{
-                "line-color": "#3b82f6",
-                "line-width": 3,
-              }}
-            />
-          </Source>
-        )}
-
-        {/* Route with wind coloring */}
+        {/* Route with wind coloring and wind arrows */}
         {route.length > 0 && (
           <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />
         )}
@@ -613,22 +1131,12 @@ export default function MapView() {
       </Map>
 
       {/* Left top: Webcams panel */}
-      <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1400 }}>
+      <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1600 }}>
         {showWebcams ? (
-          <div
-            style={{
-              background: "rgba(255,255,255,0.95)",
-              color: "#1e293b",
-              borderRadius: 8,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-              padding: 6,
-            }}
-          >
-            <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
-            >
+          <div style={panelCardStyle}>
+            <div style={panelHeaderStyle}>
               <span style={{ fontWeight: 600 }}>Webcams</span>
-              <button onClick={() => setShowWebcams(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
+              <button onClick={() => setShowWebcams(false)} style={closeButtonStyle} aria-label="Close webcams panel">
                 ✖
               </button>
             </div>
@@ -642,46 +1150,85 @@ export default function MapView() {
             />
           </div>
         ) : (
-          <button onClick={() => setShowWebcams(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
+          <button onClick={() => setShowWebcams(true)} style={toggleButtonStyle}>
             Show Webcams
           </button>
         )}
       </div>
 
-      {/* Mapbox Directions Control */}
-        <MapboxDirectionsControl
-        mapRef={mapRef}
-        onRoute={(coords) => {
-          if (coords.length <= 1) return;
-          void (async () => {
-            const mergedFromPlugin = coords
-              .map((p) => toLonLat(p))
-              .filter((p): p is [number, number] => p !== null)
-              .filter(([lon, lat]) => isValidCoordinate(lat, lon));
-
-            let merged = mergedFromPlugin;
-            try {
-              const mergedFromMapboxApi = await fetchRouteFromCoords(mergedFromPlugin);
-              if (mergedFromMapboxApi.length > 1) {
-                merged = mergedFromMapboxApi;
+      <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1400 }}>
+        <div
+          style={{
+            ...panelCardStyle,
+            maxHeight: "78vh",
+            overflowY: "auto",
+            overflowX: "hidden",
+            overscrollBehavior: "contain",
+          }}
+        >
+          <MapboxRoutingPanel
+            center={mapCenter}
+            startLatLon={startLonLat}
+            startLabel={startLabel}
+            endLatLon={endLonLat}
+            endLabel={endLabel}
+            waypoints={waypointInputs.map((w) => ({ label: w.label, latLon: w.lonLat }))}
+            onWaypointsChange={(next) => {
+              setWaypointInputs(() => {
+                const updated = next.map((w) => ({ label: w.label, lonLat: w.latLon ?? null }));
+                // Trigger route recalculation after updating waypoints
+                const waypointCoords = updated
+                  .map((w) => w.lonLat)
+                  .filter((v): v is LonLat => Array.isArray(v));
+                if (startLonLat && endLonLat) {
+                  const all: [number, number][] = [startLonLat, ...waypointCoords, endLonLat];
+                  void planRouteMulti(all);
+                }
+                return updated;
+              });
+            }}
+            onMoveWaypoint={moveWaypoint}
+            onClearStart={clearStart}
+            onClearEnd={clearEnd}
+            onMoveStartDown={moveStartDown}
+            onMoveEndUp={moveEndUp}
+            onPickOnMap={(role, wpIdx) => beginMapPick(role, wpIdx)}
+            pickMode={pickMode}
+            pendingWaypointIndex={pendingWaypointIndex}
+            routePresets={TAIPEI_ROUTE_PRESETS.map((p) => ({
+              id: p.id,
+              name: p.name,
+              description: p.description,
+            }))}
+            onApplyPreset={applyRoutePreset}
+            isApplyingPreset={Boolean(applyingPresetId)}
+            onPick={(role: RoutingPanelRole, lat, lon, label, wpIdx) => {
+              const v: LonLat = [lon, lat];
+              if (role === "start") {
+                setStartLonLat(v);
+                setStartLabel(label);
+                writeQuery(v, endLonLat);
+                return;
               }
-            } catch (e) {
-              console.error("[routing] mapbox-route normalization failed, fallback to plugin geometry", e);
-            }
-
-            await applyRouteFromLonLat(merged, {
-              source: "mapbox-directions",
-              incomingCount: coords.length,
-            });
-            const first = merged[0];
-            const last = merged[merged.length - 1];
-            writeQuery(
-              first ? ([first[0], first[1]] as [number, number]) : null,
-              last ? ([last[0], last[1]] as [number, number]) : null
-            );
-          })();
-        }}
-      />
+              if (role === "end") {
+                setEndLonLat(v);
+                setEndLabel(label);
+                writeQuery(startLonLat, v);
+                return;
+              }
+              if (typeof wpIdx !== "number") return;
+              setWaypointInputs((prev) => {
+                const next = [...prev];
+                while (next.length <= wpIdx) {
+                  next.push({ label: `Stop ${next.length + 1}`, lonLat: null });
+                }
+                next[wpIdx] = { label, lonLat: v };
+                return next;
+              });
+            }}
+          />
+        </div>
+      </div>
 
       {/* Bottom-right: Segments + Wind legend */}
       <div
@@ -689,7 +1236,7 @@ export default function MapView() {
           position: "absolute",
           right: 12,
           bottom: 12,
-          zIndex: 1200,
+          zIndex: 1600,
           display: "flex",
           alignItems: "flex-end",
           gap: 8,
@@ -697,27 +1244,17 @@ export default function MapView() {
       >
         <div>
           {showSegments ? (
-            <div
-              style={{
-                background: "rgba(255,255,255,0.95)",
-                color: "#1e293b",
-                borderRadius: 8,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                padding: 6,
-              }}
-            >
-              <div
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
-              >
-                <span style={{ fontWeight: 600 }}>Wing Sampling Segments</span>
-                <button onClick={() => setShowSegments(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
+            <div style={panelCardStyle}>
+              <div style={panelHeaderStyle}>
+                <span style={{ fontWeight: 600 }}>Wind Sampling Segments</span>
+                <button onClick={() => setShowSegments(false)} style={closeButtonStyle} aria-label="Close segments panel">
                   ✖
                 </button>
               </div>
               <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
             </div>
           ) : (
-            <button onClick={() => setShowSegments(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
+            <button onClick={() => setShowSegments(true)} style={toggleButtonStyle}>
               Show Segments
             </button>
           )}
@@ -727,57 +1264,21 @@ export default function MapView() {
         </div>
       </div>
 
-      {/* Left middle: Routing debug */}
-      {routeDebug && (
-        <div
-          style={{
-            position: "absolute",
-            left: 65,
-            top: 210,
-            zIndex: 1300,
-            background: "rgba(255,255,255,0.95)",
-            color: "#0f172a",
-            borderRadius: 8,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            padding: 8,
-            maxWidth: 560,
-            fontSize: 12,
-            lineHeight: 1.35,
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>Routing Data</div>
-          <div>source: {routeDebug.source}</div>
-          <div>incoming points: {routeDebug.incomingCount}</div>
-          <div>merged points: {routeDebug.mergedCount}</div>
-          <div>wind points: {routeDebug.windCount}</div>
-          <div>elevation returned: {routeDebug.elevationReturned}</div>
-          <div>elevation valid: {routeDebug.elevationValid}</div>
-          <div>elevation error points: {routeDebug.elevationErrors}</div>
-          {routeDebug.message && <div style={{ color: "#b91c1c" }}>message: {routeDebug.message}</div>}
-          <div>updated: {new Date(routeDebug.updatedAt).toLocaleTimeString()}</div>
-        </div>
-      )}
-
       {/* Left bottom: Elevation panel */}
-      <div style={{ position: "absolute", left: 65, bottom: 12, zIndex: 1200 }}>
+      <div style={{ position: "absolute", left: 65, bottom: 12, zIndex: 1600 }}>
         {showElevation ? (
           <div
             style={{
-              background: "rgba(255,255,255,0.95)",
-              color: "#1e293b",
-              borderRadius: 8,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              ...panelCardStyle,
               padding: 6,
               maxHeight: "60vh",
               overflowY: "auto",
               minWidth: "250px",
             }}
           >
-            <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
-            >
+            <div style={panelHeaderStyle}>
               <span style={{ fontWeight: 600 }}>Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}</span>
-              <button onClick={() => setShowElevation(false)} style={{ fontSize: 12, background: "none", border: "none", cursor: "pointer" }}>
+              <button onClick={() => setShowElevation(false)} style={closeButtonStyle} aria-label="Close elevation panel">
                 ✖
               </button>
             </div>
@@ -809,7 +1310,7 @@ export default function MapView() {
             )}
           </div>
         ) : (
-          <button onClick={() => setShowElevation(true)} style={{ fontSize: 12, padding: "2px 6px", background: "rgba(255,255,255,0.9)", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer" }}>
+          <button onClick={() => setShowElevation(true)} style={toggleButtonStyle}>
             Show Elevation
           </button>
         )}

@@ -8,7 +8,7 @@ type Props = {
   /** 地圖中心（用於搜尋） */
   center: { lat: number; lon: number };
   /** 選取單一結果（使用者點選下拉） */
-  onPick: (role: Role, lat: number, lon: number, label: string) => void;
+  onPick: (role: Role, lat: number, lon: number, label: string, wpIdx?: number) => void;
   /** 選中的起點 */
   startLatLon?: [number, number] | null;
   startLabel?: string;
@@ -16,8 +16,19 @@ type Props = {
   endLatLon?: [number, number] | null;
   endLabel?: string;
   /** 途經點 */
-  waypoints?: Array<{ label: string; latLon: [number, number] }>;
-  onWaypointsChange?: (waypoints: Array<{ label: string; latLon: [number, number] }>) => void;
+  waypoints?: Array<{ label: string; latLon?: [number, number] | null }>;
+  onWaypointsChange?: (waypoints: Array<{ label: string; latLon?: [number, number] | null }>) => void;
+  onPickOnMap?: (role: Role, wpIdx?: number) => void;
+  onMoveWaypoint?: (fromIndex: number, toIndex: number) => void;
+  onClearStart?: () => void;
+  onClearEnd?: () => void;
+  onMoveStartDown?: () => void;
+  onMoveEndUp?: () => void;
+  pickMode?: "none" | "start" | "end" | "waypoint";
+  pendingWaypointIndex?: number | null;
+  routePresets?: Array<{ id: string; name: string; description?: string }>;
+  onApplyPreset?: (presetId: string) => void | Promise<void>;
+  isApplyingPreset?: boolean;
 };
 
 function useDebounced<T>(value: T, delay = 300) {
@@ -51,6 +62,85 @@ async function geocodeFetch(
   return j.items ?? [];
 }
 
+function normalizeText(s: string) {
+  return s.trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function approxDistanceKm(aLat: number, aLon: number, bLat: number, bLon: number) {
+  const dLat = (aLat - bLat) * 111;
+  const dLon = (aLon - bLon) * 111 * Math.cos((aLat * Math.PI) / 180);
+  return Math.hypot(dLat, dLon);
+}
+
+function layerWeight(type?: string) {
+  switch (type) {
+    case "poi":
+    case "venue":
+      return 30;
+    case "place":
+      return 24;
+    case "address":
+      return 22;
+    case "street":
+      return 14;
+    case "locality":
+      return 8;
+    default:
+      return 0;
+  }
+}
+
+function isAddressLikeQuery(qRaw: string) {
+  const q = normalizeText(qRaw);
+  if (/\d/.test(q)) return true;
+  // Common address tokens in zh/en
+  const tokens = ["路", "街", "段", "巷", "弄", "號", "rd", "road", "st", "street", "ave", "avenue"];
+  return tokens.some((t) => q.includes(t));
+}
+
+function pickBestGeocodeItem(query: string, items: GeoItem[], center: { lat: number; lon: number }): GeoItem | null {
+  if (!items.length) return null;
+  const q = normalizeText(query);
+  const addressLike = isAddressLikeQuery(query);
+  let best: GeoItem | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const it of items) {
+    const name = normalizeText(it.name || "");
+    let score = 0;
+
+    if (name === q) score += 140;
+    if (name.startsWith(q)) score += 90;
+    if (name.includes(q) || q.includes(name)) score += 70;
+    score += layerWeight(it.type);
+
+    // Prefer POIs unless user clearly typed an address-like query.
+    if (!addressLike) {
+      if (it.type === "poi" || it.type === "venue") score += 45;
+      if (it.type === "address" || it.type === "street") score -= 20;
+    } else {
+      if (it.type === "address" || it.type === "street") score += 20;
+    }
+
+    if (q.includes("捷運") && name.includes("捷運")) score += 35;
+    if (q.includes("車站") && name.includes("車站")) score += 30;
+    if (q.includes("公園") && name.includes("公園")) score += 22;
+    if (q.includes("碼頭") && name.includes("碼頭")) score += 22;
+    if (q.includes("宮") && name.includes("宮")) score += 18;
+    if (q.includes("路") && it.type === "street") score += 18;
+
+    const distKm = approxDistanceKm(it.lat, it.lon, center.lat, center.lon);
+    score -= Math.min(distKm, 60) * 0.9;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = it;
+    }
+  }
+
+  return best;
+}
+
 export default function MapboxRoutingPanel({
   onPick,
   center,
@@ -60,12 +150,35 @@ export default function MapboxRoutingPanel({
   endLabel: endLabelProp,
   waypoints = [],
   onWaypointsChange,
+  onPickOnMap,
+  onMoveWaypoint,
+  onClearStart,
+  onClearEnd,
+  onMoveStartDown,
+  onMoveEndUp,
+  pickMode = "none",
+  pendingWaypointIndex = null,
+  routePresets = [],
+  onApplyPreset,
+  isApplyingPreset = false,
 }: Props) {
   const [startQ, setStartQ] = useState(startLabelProp ?? "");
   const [endQ, setEndQ] = useState(endLabelProp ?? "");
   const [waypointQueries, setWaypointQueries] = useState<string[]>(
     waypoints.map((w) => w.label)
   );
+
+  useEffect(() => {
+    setStartQ(startLabelProp ?? "");
+  }, [startLabelProp]);
+
+  useEffect(() => {
+    setEndQ(endLabelProp ?? "");
+  }, [endLabelProp]);
+
+  useEffect(() => {
+    setWaypointQueries(waypoints.map((w) => w.label));
+  }, [waypoints]);
 
   const ds = useDebounced(startQ, 300);
   const de = useDebounced(endQ, 300);
@@ -75,11 +188,37 @@ export default function MapboxRoutingPanel({
   const [endList, setEndList] = useState<GeoItem[]>([]);
   const [waypointLists, setWaypointLists] = useState<GeoItem[][]>([]);
   const [activeIdx, setActiveIdx] = useState<{ role: Role; wpIdx?: number; idx: number } | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const abortMapRef = useRef<Record<string, AbortController>>({});
+  const requestSeqRef = useRef<Record<string, number>>({});
+  const confirmedLabelRef = useRef<Record<string, string>>({});
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(routePresets[0]?.id ?? "");
+
+  useEffect(() => {
+    if (!routePresets.length) {
+      setSelectedPresetId("");
+      return;
+    }
+    if (!routePresets.some((r) => r.id === selectedPresetId)) {
+      setSelectedPresetId(routePresets[0].id);
+    }
+  }, [routePresets, selectedPresetId]);
 
   const runSearch = useCallback(
     async (role: Role, q: string, wpIdx?: number) => {
-      if (!q.trim()) {
+      const key = role === "waypoint" ? `waypoint-${wpIdx ?? -1}` : role;
+      const seq = (requestSeqRef.current[key] ?? 0) + 1;
+      requestSeqRef.current[key] = seq;
+      const trimmed = q.trim();
+      const selectedLabel =
+        role === "start"
+          ? (confirmedLabelRef.current.start ?? startLabelProp ?? "").trim()
+          : role === "end"
+            ? (confirmedLabelRef.current.end ?? endLabelProp ?? "").trim()
+            : typeof wpIdx === "number"
+              ? (confirmedLabelRef.current[`waypoint-${wpIdx}`] ?? waypoints[wpIdx]?.label ?? "").trim()
+              : "";
+      // If user has already selected this exact label, keep dropdown closed.
+      if (trimmed && selectedLabel && trimmed === selectedLabel) {
         if (role === "start") setStartList([]);
         else if (role === "end") setEndList([]);
         else if (role === "waypoint" && typeof wpIdx === "number") {
@@ -91,15 +230,29 @@ export default function MapboxRoutingPanel({
         }
         return;
       }
-      abortRef.current?.abort();
+      if (!trimmed) {
+        if (role === "start") setStartList([]);
+        else if (role === "end") setEndList([]);
+        else if (role === "waypoint" && typeof wpIdx === "number") {
+          setWaypointLists((prev) => {
+            const next = [...prev];
+            next[wpIdx] = [];
+            return next;
+          });
+        }
+        return;
+      }
+      abortMapRef.current[key]?.abort();
       const ac = new AbortController();
-      abortRef.current = ac;
+      abortMapRef.current[key] = ac;
       try {
         const items = await geocodeFetch(
-          q,
+          trimmed,
           { focusLat: center.lat, focusLon: center.lon, lang: "zh-TW", limit: 5 },
           ac.signal
         );
+        // Ignore stale async responses that finished after a newer query.
+        if (requestSeqRef.current[key] !== seq) return;
         if (role === "start") setStartList(items);
         else if (role === "end") setEndList(items);
         else if (role === "waypoint" && typeof wpIdx === "number") {
@@ -111,6 +264,7 @@ export default function MapboxRoutingPanel({
         }
         setActiveIdx(items.length ? { role, wpIdx, idx: 0 } : null);
       } catch {
+        if (requestSeqRef.current[key] !== seq) return;
         if (role === "start") setStartList([]);
         else if (role === "end") setEndList([]);
         else if (role === "waypoint" && typeof wpIdx === "number") {
@@ -122,7 +276,7 @@ export default function MapboxRoutingPanel({
         }
       }
     },
-    [center.lat, center.lon]
+    [center.lat, center.lon, startLabelProp, endLabelProp, waypoints]
   );
 
   useEffect(() => {
@@ -139,14 +293,17 @@ export default function MapboxRoutingPanel({
 
   const onChoose = useCallback(
     (role: Role, item: GeoItem, wpIdx?: number) => {
-      onPick(role, item.lat, item.lon, item.name);
+      onPick(role, item.lat, item.lon, item.name, wpIdx);
       if (role === "start") {
+        confirmedLabelRef.current.start = item.name;
         setStartQ(item.name);
         setStartList([]);
       } else if (role === "end") {
+        confirmedLabelRef.current.end = item.name;
         setEndQ(item.name);
         setEndList([]);
       } else if (role === "waypoint" && typeof wpIdx === "number") {
+        confirmedLabelRef.current[`waypoint-${wpIdx}`] = item.name;
         const newWpQueries = [...waypointQueries];
         newWpQueries[wpIdx] = item.name;
         setWaypointQueries(newWpQueries);
@@ -160,6 +317,32 @@ export default function MapboxRoutingPanel({
     [onPick, waypointQueries]
   );
 
+  const resolveAndPick = useCallback(
+    async (role: Role, rawQuery: string, wpIdx?: number) => {
+      const q = rawQuery.trim();
+      if (!q) return;
+      try {
+        const candidates = await geocodeFetch(
+          q,
+          { focusLat: center.lat, focusLon: center.lon, lang: "zh-TW", limit: 8 },
+          undefined
+        );
+        const best = pickBestGeocodeItem(q, candidates, center);
+        if (best) onChoose(role, best, wpIdx);
+      } catch {
+        // ignore
+      }
+    },
+    [center, onChoose]
+  );
+
+  useEffect(() => {
+    const abortMap = abortMapRef.current;
+    return () => {
+      Object.values(abortMap).forEach((ac) => ac.abort());
+    };
+  }, []);
+
   const box = useMemo(
     () => ({
       container: { position: "relative" as const, width: 360 },
@@ -169,6 +352,31 @@ export default function MapboxRoutingPanel({
         borderRadius: 6,
         border: "1px solid #d1d5db",
         fontSize: 14,
+      },
+      inputRow: {
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+      },
+      applyBtn: {
+        padding: "6px 8px",
+        borderRadius: 6,
+        border: "1px solid #bfdbfe",
+        background: "#eff6ff",
+        color: "#1d4ed8",
+        fontSize: 12,
+        fontWeight: 700,
+        cursor: "pointer",
+        whiteSpace: "nowrap" as const,
+      },
+      select: {
+        width: "100%",
+        padding: "7px 10px",
+        borderRadius: 6,
+        border: "1px solid #d1d5db",
+        fontSize: 13,
+        color: "#0f172a",
+        background: "#fff",
       },
       label: { fontSize: 12, fontWeight: 600 as const, marginBottom: 4, color: "#1e293b" },
       listWrap: {
@@ -196,6 +404,15 @@ export default function MapboxRoutingPanel({
         background: "#e0f2fe",
         color: "#0369a1",
         marginLeft: 6,
+      },
+      tinyBtn: {
+        padding: "2px 6px",
+        borderRadius: 4,
+        border: "1px solid #cbd5e1",
+        background: "#fff",
+        color: "#334155",
+        cursor: "pointer",
+        fontSize: 11,
       },
     }),
     []
@@ -237,8 +454,8 @@ export default function MapboxRoutingPanel({
     e: React.KeyboardEvent<HTMLInputElement>,
     wpIdx?: number
   ) => {
-    if (!items.length) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!items.length) return;
       e.preventDefault();
       const cur =
         activeIdx && activeIdx.role === role && (role !== "waypoint" || activeIdx.wpIdx === wpIdx)
@@ -249,12 +466,26 @@ export default function MapboxRoutingPanel({
       setActiveIdx({ role, wpIdx, idx: next });
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const cur =
-        activeIdx && activeIdx.role === role && (role !== "waypoint" || activeIdx.wpIdx === wpIdx)
-          ? activeIdx.idx
-          : 0;
-      const item = items[cur];
-      if (item) onChoose(role, item, wpIdx);
+      if (items.length > 0) {
+        const cur =
+          activeIdx && activeIdx.role === role && (role !== "waypoint" || activeIdx.wpIdx === wpIdx)
+            ? activeIdx.idx
+            : 0;
+        const item = items[cur];
+        if (item) onChoose(role, item, wpIdx);
+        return;
+      }
+      const q =
+        role === "start"
+          ? startQ
+          : role === "end"
+            ? endQ
+            : typeof wpIdx === "number"
+              ? waypointQueries[wpIdx] ?? ""
+              : "";
+      if (!q.trim()) return;
+      // Fallback: user typed text and pressed Enter before selecting dropdown.
+      void resolveAndPick(role, q, wpIdx);
     } else if (e.key === "Escape") {
       if (role === "start") setStartList([]);
       else if (role === "end") setEndList([]);
@@ -269,8 +500,10 @@ export default function MapboxRoutingPanel({
   };
 
   const addWaypoint = () => {
+    const nextWaypoints = [...waypoints, { label: "", latLon: null }];
     setWaypointQueries([...waypointQueries, ""]);
     setWaypointLists([...waypointLists, []]);
+    onWaypointsChange?.(nextWaypoints);
   };
 
   const removeWaypoint = (idx: number) => {
@@ -284,18 +517,116 @@ export default function MapboxRoutingPanel({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: 100 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: 360 }}>
+      {routePresets.length > 0 && (
+        <div
+          style={{
+            border: "1px solid #dbeafe",
+            borderRadius: 8,
+            background: "#f8fbff",
+            padding: 8,
+          }}
+        >
+          <div style={{ ...box.label, marginBottom: 6 }}>台北熱門自行車路線</div>
+          <select
+            value={selectedPresetId}
+            onChange={(e) => setSelectedPresetId(e.target.value)}
+            style={box.select}
+          >
+            {routePresets.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name}
+              </option>
+            ))}
+          </select>
+          {selectedPresetId && (
+            <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>
+              {routePresets.find((p) => p.id === selectedPresetId)?.description ?? ""}
+            </div>
+          )}
+          <button
+            onClick={() => {
+              if (!selectedPresetId) return;
+              void onApplyPreset?.(selectedPresetId);
+            }}
+            disabled={!selectedPresetId || isApplyingPreset}
+            style={{
+              marginTop: 8,
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 7,
+              border: "1px solid #bfdbfe",
+              background: isApplyingPreset ? "#e2e8f0" : "#dbeafe",
+              color: isApplyingPreset ? "#64748b" : "#1d4ed8",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: isApplyingPreset ? "not-allowed" : "pointer",
+            }}
+          >
+            {isApplyingPreset ? "路線載入中..." : "載入所選路線"}
+          </button>
+        </div>
+      )}
+
+      <div style={{ fontSize: 11, color: "#64748b" }}>
+        One routing panel: type places or pick directly on map.
+      </div>
       {/* Start Point */}
       <div>
-        <div style={box.label}>📍 Start</div>
+        <div style={{ ...box.label, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>📍 Start</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={onMoveStartDown}
+              disabled={!startLatLon}
+              style={{
+                ...box.tinyBtn,
+                cursor: startLatLon ? "pointer" : "not-allowed",
+                color: startLatLon ? "#334155" : "#94a3b8",
+              }}
+            >
+              Down
+            </button>
+            <button
+              onClick={onClearStart}
+              disabled={!startLatLon}
+              style={{
+                ...box.tinyBtn,
+                borderColor: "#fee2e2",
+                color: startLatLon ? "#dc2626" : "#94a3b8",
+                cursor: startLatLon ? "pointer" : "not-allowed",
+              }}
+            >
+              Remove
+            </button>
+            <button
+              onClick={() => onPickOnMap?.("start")}
+              style={{
+                ...box.tinyBtn,
+                background: pickMode === "start" ? "#dbeafe" : "#fff",
+                borderColor: pickMode === "start" ? "#93c5fd" : "#cbd5e1",
+              }}
+            >
+              Pick on map
+            </button>
+          </div>
+        </div>
         <div style={box.container}>
-          <input
-            value={startQ}
-            onChange={(e) => setStartQ(e.target.value)}
-            onKeyDown={(e) => onKey("start", startList, e)}
-            placeholder="Starting location"
-            style={box.input}
-          />
+          <div style={box.inputRow}>
+            <input
+              value={startQ}
+              onChange={(e) => {
+                delete confirmedLabelRef.current.start;
+                setStartQ(e.target.value);
+              }}
+              onKeyDown={(e) => onKey("start", startList, e)}
+              placeholder="Starting location (Traditional Chinese supported)"
+              style={box.input}
+            />
+            <button onClick={() => void resolveAndPick("start", startQ)} style={box.applyBtn}>
+              Apply
+            </button>
+          </div>
           {startLatLon && (
             <div style={{ ...box.badge, marginTop: 4, display: "block", marginLeft: 0 }}>
               Selected: {startLatLon[1].toFixed(4)}, {startLatLon[0].toFixed(4)}
@@ -308,36 +639,90 @@ export default function MapboxRoutingPanel({
       {/* Waypoints */}
       {waypointQueries.map((q, i) => (
         <div key={`wp-${i}`}>
-          <div style={box.label}>
-            🚩 Waypoint {i + 1}
-            <button
-              onClick={() => removeWaypoint(i)}
-              style={{
-                marginLeft: 8,
-                padding: "0 6px",
-                borderRadius: 4,
-                border: "1px solid #fee2e2",
-                background: "#fff",
-                color: "#dc2626",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              Remove
-            </button>
+          <div style={{ ...box.label, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>
+              🚩 Stop {i + 1}
+              {pickMode === "waypoint" && pendingWaypointIndex === i ? " (click map...)" : ""}
+            </span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => onPickOnMap?.("waypoint", i)}
+                style={{
+                  ...box.tinyBtn,
+                  background: pickMode === "waypoint" && pendingWaypointIndex === i ? "#dbeafe" : "#fff",
+                  borderColor:
+                    pickMode === "waypoint" && pendingWaypointIndex === i ? "#93c5fd" : "#cbd5e1",
+                }}
+              >
+                Pick
+              </button>
+              <button
+                onClick={() => onMoveWaypoint?.(i, i - 1)}
+                disabled={i === 0}
+                style={{
+                  ...box.tinyBtn,
+                  cursor: i === 0 ? "not-allowed" : "pointer",
+                  color: i === 0 ? "#94a3b8" : "#334155",
+                }}
+              >
+                Up
+              </button>
+              <button
+                onClick={() => onMoveWaypoint?.(i, i + 1)}
+                disabled={i === waypointQueries.length - 1}
+                style={{
+                  ...box.tinyBtn,
+                  cursor: i === waypointQueries.length - 1 ? "not-allowed" : "pointer",
+                  color: i === waypointQueries.length - 1 ? "#94a3b8" : "#334155",
+                }}
+              >
+                Down
+              </button>
+              <button
+                onClick={() => removeWaypoint(i)}
+                style={{
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  border: "1px solid #fee2e2",
+                  background: "#fff",
+                  color: "#dc2626",
+                  cursor: "pointer",
+                  fontSize: 11,
+                }}
+              >
+                Remove
+              </button>
+            </div>
           </div>
           <div style={box.container}>
-            <input
-              value={q}
-              onChange={(e) => {
-                const newQueries = [...waypointQueries];
-                newQueries[i] = e.target.value;
-                setWaypointQueries(newQueries);
-              }}
-              onKeyDown={(e) => onKey("waypoint", waypointLists[i] ?? [], e, i)}
-              placeholder="Waypoint location"
-              style={box.input}
-            />
+            <div style={box.inputRow}>
+              <input
+                value={q}
+                onChange={(e) => {
+                  delete confirmedLabelRef.current[`waypoint-${i}`];
+                  const newQueries = [...waypointQueries];
+                  newQueries[i] = e.target.value;
+                  setWaypointQueries(newQueries);
+                }}
+                onKeyDown={(e) => onKey("waypoint", waypointLists[i] ?? [], e, i)}
+                placeholder="Waypoint location (Traditional Chinese supported)"
+                style={box.input}
+              />
+              <button
+                onClick={() => {
+                  const current = waypointQueries[i] ?? "";
+                  void resolveAndPick("waypoint", current, i);
+                }}
+                style={box.applyBtn}
+              >
+                Apply
+              </button>
+            </div>
+            {waypoints[i]?.latLon && (
+              <div style={{ ...box.badge, marginTop: 4, display: "block", marginLeft: 0 }}>
+                Selected: {waypoints[i].latLon![1].toFixed(4)}, {waypoints[i].latLon![0].toFixed(4)}
+              </div>
+            )}
             {waypointLists[i]?.length > 0 && renderList("waypoint", waypointLists[i], i)}
           </div>
         </div>
@@ -345,15 +730,60 @@ export default function MapboxRoutingPanel({
 
       {/* End Point */}
       <div>
-        <div style={box.label}>📍 End</div>
+        <div style={{ ...box.label, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>📍 End</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={onMoveEndUp}
+              disabled={!endLatLon}
+              style={{
+                ...box.tinyBtn,
+                cursor: endLatLon ? "pointer" : "not-allowed",
+                color: endLatLon ? "#334155" : "#94a3b8",
+              }}
+            >
+              Up
+            </button>
+            <button
+              onClick={onClearEnd}
+              disabled={!endLatLon}
+              style={{
+                ...box.tinyBtn,
+                borderColor: "#fee2e2",
+                color: endLatLon ? "#dc2626" : "#94a3b8",
+                cursor: endLatLon ? "pointer" : "not-allowed",
+              }}
+            >
+              Remove
+            </button>
+            <button
+              onClick={() => onPickOnMap?.("end")}
+              style={{
+                ...box.tinyBtn,
+                background: pickMode === "end" ? "#dbeafe" : "#fff",
+                borderColor: pickMode === "end" ? "#93c5fd" : "#cbd5e1",
+              }}
+            >
+              Pick on map
+            </button>
+          </div>
+        </div>
         <div style={box.container}>
-          <input
-            value={endQ}
-            onChange={(e) => setEndQ(e.target.value)}
-            onKeyDown={(e) => onKey("end", endList, e)}
-            placeholder="Destination"
-            style={box.input}
-          />
+          <div style={box.inputRow}>
+            <input
+              value={endQ}
+              onChange={(e) => {
+                delete confirmedLabelRef.current.end;
+                setEndQ(e.target.value);
+              }}
+              onKeyDown={(e) => onKey("end", endList, e)}
+              placeholder="Destination (Traditional Chinese supported)"
+              style={box.input}
+            />
+            <button onClick={() => void resolveAndPick("end", endQ)} style={box.applyBtn}>
+              Apply
+            </button>
+          </div>
           {endLatLon && (
             <div style={{ ...box.badge, marginTop: 4, display: "block", marginLeft: 0 }}>
               Selected: {endLatLon[1].toFixed(4)}, {endLatLon[0].toFixed(4)}
@@ -364,21 +794,43 @@ export default function MapboxRoutingPanel({
       </div>
 
       {/* Add Waypoint Button */}
-      <button
-        onClick={addWaypoint}
-        style={{
-          padding: "8px 12px",
-          borderRadius: 8,
-          border: "1px dashed #cbd5e1",
-          background: "#f8fafc",
-          color: "#475569",
-          cursor: "pointer",
-          fontSize: 13,
-          fontWeight: 500,
-        }}
-      >
-        + Add Waypoint
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={addWaypoint}
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px dashed #cbd5e1",
+            background: "#f8fafc",
+            color: "#475569",
+            cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          + Add Stop Input
+        </button>
+        <button
+          onClick={() => {
+            addWaypoint();
+            onPickOnMap?.("waypoint", waypointQueries.length);
+          }}
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #cbd5e1",
+            background: "#fff",
+            color: "#334155",
+            cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          + Add Stop On Map
+        </button>
+      </div>
     </div>
   );
 }

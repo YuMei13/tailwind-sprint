@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MapRef } from "react-map-gl";
 import mapboxgl from "mapbox-gl";
 import type { IControl, Map as MapboxMap } from "mapbox-gl";
@@ -7,6 +7,7 @@ import type { IControl, Map as MapboxMap } from "mapbox-gl";
 type MapboxDirectionsControlProps = {
   mapRef: React.RefObject<MapRef | null>;
   onRoute?: (coords: [number, number][]) => void;
+  onAddStopClick?: () => void;
 };
 
 type DirectionsRouteEvent = {
@@ -39,13 +40,14 @@ declare global {
   }
 }
 
-export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirectionsControlProps) {
+export default function MapboxDirectionsControl({ mapRef, onRoute, onAddStopClick }: MapboxDirectionsControlProps) {
   const directionsRef = useRef<MapboxDirectionsControlInstance | null>(null);
   const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const initAttemptsRef = useRef(0);
   const onRouteRef = useRef<typeof onRoute>(onRoute);
   const mapInstanceRef = useRef<MapboxMap | null>(null);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     onRouteRef.current = onRoute;
@@ -86,7 +88,7 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
         // Create control
         const directions = new MapboxDir({
           accessToken: process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
-          alternatives: true,
+          alternatives: false,
           geometries: "geojson",
           profile: "mapbox/cycling",
           controls: {
@@ -97,6 +99,7 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
         directionsRef.current = directions;
         m.addControl(directions, "top-right");
         isInitializedRef.current = true;
+        setIsReady(true);
 
         // Position it
         setTimeout(() => {
@@ -123,7 +126,10 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
         directions.on("route", (e: unknown) => {
           const ev = e as DirectionsRouteEvent;
           if (ev.route?.[0]?.geometry?.coordinates) {
-            const coords = ev.route[0].geometry.coordinates.map(([lon, lat]: [number, number]) => [lat, lon] as [number, number]);
+            // Keep [lon, lat] order from Mapbox route geometry.
+            const coords = ev.route[0].geometry.coordinates.map(
+              ([lon, lat]: [number, number]) => [lon, lat] as [number, number]
+            );
             onRouteRef.current?.(coords);
           }
         });
@@ -132,63 +138,8 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
           console.error("MapboxDirectionsControl: plugin error event", e);
         });
 
-        // Track origin/destination features and fetch a normalized route
-        const originRef: { current: [number, number] | null } = { current: null };
-        const destRef: { current: [number, number] | null } = { current: null };
-        let lastRouteKey = "";
-
-        const extractFeatureCoord = (evt: unknown): [number, number] | null => {
-          try {
-            const maybeEvent = evt as {
-              feature?: { geometry?: { coordinates?: unknown } };
-              geometry?: { coordinates?: unknown };
-            };
-            const f = maybeEvent?.feature ?? maybeEvent;
-            const coord = f?.geometry?.coordinates;
-            if (Array.isArray(coord) && coord.length >= 2 && Number.isFinite(coord[0]) && Number.isFinite(coord[1])) {
-              return [coord[0], coord[1]] as [number, number];
-            }
-          } catch {
-            // ignore
-          }
-          return null;
-        };
-
-        const tryFetchNormalizedRoute = async () => {
-          const o = originRef.current;
-          const d = destRef.current;
-          if (!o || !d) return;
-          const key = `${o[0]},${o[1]}|${d[0]},${d[1]}`;
-          if (key === lastRouteKey) return;
-          lastRouteKey = key;
-          try {
-            const res = await fetch("/api/mapbox-route", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ start: o, end: d, profile: "cycling" }),
-            });
-            const json = await res.json();
-            const coordsRaw = Array.isArray(json?.geometry?.coordinates) ? json.geometry.coordinates : [];
-            if (!coordsRaw.length) return;
-            // map [lon, lat] -> [lat, lon] to match existing onRoute expectations
-            const coords = coordsRaw.map(([lon, lat]: [number, number]) => [lat, lon] as [number, number]);
-            onRouteRef.current?.(coords);
-          } catch (err) {
-            console.error("MapboxDirectionsControl: failed to fetch normalized route", err instanceof Error ? err.message : String(err));
-          }
-        };
-
-        directions.on("origin", (e: unknown) => {
-          const c = extractFeatureCoord(e);
-          originRef.current = c;
-          void tryFetchNormalizedRoute();
-        });
-
-        directions.on("destination", (e: unknown) => {
-          const c = extractFeatureCoord(e);
-          destRef.current = c;
-          void tryFetchNormalizedRoute();
-        });
+        // Keep plugin route as the source of truth.
+        // It already includes intermediate stops added in the Mapbox UI.
 
       } catch (err) {
         console.error("MapboxDirectionsControl error:", err);
@@ -213,6 +164,7 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
       directionsRef.current = null;
       isInitializedRef.current = false;
       mapInstanceRef.current = null;
+      setIsReady(false);
     };
   }, [mapRef]);
 
@@ -270,5 +222,98 @@ export default function MapboxDirectionsControl({ mapRef, onRoute }: MapboxDirec
     }
   }, []);
 
-  return null;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onAddStopClick?.();
+        const api = directionsRef.current as unknown as {
+          addWaypoint?: (index: number, waypoint?: unknown) => void;
+          setWaypoint?: (index: number, waypoint?: unknown) => void;
+          getWaypoints?: () => unknown[];
+          getOrigin?: () => unknown;
+          getDestination?: () => unknown;
+        };
+        if (!api?.addWaypoint) return;
+        if (!api.getOrigin?.() || !api.getDestination?.()) {
+          console.error("MapboxDirectionsControl: set origin and destination first");
+          return;
+        }
+        const extractLonLat = (obj: unknown): [number, number] | null => {
+          const maybe = obj as {
+            geometry?: { coordinates?: unknown };
+            feature?: { geometry?: { coordinates?: unknown } };
+          };
+          const fromObj = maybe?.geometry?.coordinates;
+          const fromFeature = maybe?.feature?.geometry?.coordinates;
+          const coord = fromObj ?? fromFeature;
+          if (
+            Array.isArray(coord) &&
+            coord.length >= 2 &&
+            Number.isFinite(coord[0]) &&
+            Number.isFinite(coord[1])
+          ) {
+            return [Number(coord[0]), Number(coord[1])];
+          }
+          return null;
+        };
+        const waypoints = Array.isArray(api.getWaypoints?.()) ? api.getWaypoints!() : [];
+        const count = waypoints.length;
+        const insertIndex = Math.max(0, count - 1); // insert before destination
+        const oldDestination =
+          extractLonLat(api.getDestination?.()) ?? extractLonLat(waypoints[count - 1]);
+        if (!oldDestination) return;
+        const oldDestinationFeature = {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: oldDestination },
+          properties: { name: `Stop ${Math.max(1, count - 1)}` },
+        };
+        try {
+          // Preferred behavior: add an empty stop field before destination.
+          // User then fills the new stop and keeps destination (B) unchanged.
+          try {
+            api.addWaypoint(insertIndex);
+            return;
+          } catch {
+            // continue
+          }
+          // Fallback for plugin versions that require a waypoint payload.
+          // Insert current destination as waypoint; destination itself remains unchanged.
+          try {
+            api.addWaypoint(insertIndex, oldDestination);
+            return;
+          } catch {
+            try {
+              api.addWaypoint(insertIndex, oldDestinationFeature);
+              return;
+            } catch {
+              api.addWaypoint(insertIndex);
+              api.setWaypoint?.(insertIndex, oldDestination);
+            }
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error("MapboxDirectionsControl: failed to add waypoint:", msg);
+        }
+      }}
+      disabled={!isReady}
+      style={{
+        position: "fixed",
+        top: 12,
+        right: 400,
+        zIndex: 10002,
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: "1px solid #cbd5e1",
+        background: isReady ? "#ffffff" : "#f1f5f9",
+        color: isReady ? "#0f172a" : "#94a3b8",
+        fontSize: 13,
+        fontWeight: 700,
+        cursor: isReady ? "pointer" : "not-allowed",
+      }}
+      title="Add a stop to Mapbox Directions"
+    >
+      + Add Stop
+    </button>
+  );
 }

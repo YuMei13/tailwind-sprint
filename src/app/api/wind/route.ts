@@ -16,6 +16,27 @@ type WindPoint = {
   msg?: string;
 };
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+
+  async function run() {
+    while (true) {
+      const idx = next++;
+      if (idx >= items.length) return;
+      out[idx] = await worker(items[idx], idx);
+    }
+  }
+
+  const n = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(Array.from({ length: n }, () => run()));
+  return out;
+}
+
 async function fetchWind(lat: number, lon: number, timeoutMs = 12000) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms`;
   const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
@@ -46,16 +67,19 @@ export async function POST(req: NextRequest) {
       key,
       90,
       async () => {
-        const out: WindPoint[] = [];
-        for (const [lat, lon] of points) {
-          try {
-            const w = await fetchWind(lat, lon, 12000);
-            out.push({ lat, lon, ...w });
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : "fetch failed";
-            out.push({ lat, lon, error: true as const, msg });
+        const out = await mapWithConcurrency(
+          points,
+          6,
+          async ([lat, lon]) => {
+            try {
+              const w = await fetchWind(lat, lon, 12000);
+              return { lat, lon, ...w } satisfies WindPoint;
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : "fetch failed";
+              return { lat, lon, error: true as const, msg } satisfies WindPoint;
+            }
           }
-        }
+        );
         return { points: out };
       },
       nocache
