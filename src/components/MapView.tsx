@@ -1,15 +1,15 @@
 // src/components/MapView.tsx
 "use client";
 
-import Map, { Marker, Source, Layer, NavigationControl, MapRef } from "react-map-gl";
+import Map, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MapMouseEvent } from "mapbox-gl";
+import Image from "next/image";
 import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWindLayer";
 import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import SegmentationControls from "@/components/SegmentationControls";
-import WebcamsPanel, { WebcamItem } from "@/components/WebcamsPanel";
 import MapboxRoutingPanel, { type Role as RoutingPanelRole } from "@/components/MapboxRoutingPanel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -19,6 +19,19 @@ type LonLat = [number, number];
 
 type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
+type WebcamItem = {
+  id?: string | number;
+  provider?: "windy" | "twipcam" | "both";
+  title?: string;
+  lat: number;
+  lon: number;
+  distance?: number;
+  city?: string;
+  region?: string;
+  country?: string;
+  detailUrl?: string;
+  preview?: string;
+};
 type RouteSource = "planned";
 type WaypointInput = { label: string; lonLat: LonLat | null };
 type PresetStop = { name: string; lonLat: LonLat };
@@ -358,6 +371,34 @@ export default function MapView() {
     alignItems: "center",
     marginBottom: 6,
   };
+  const webcamMarkerWrapStyle: React.CSSProperties = {
+    position: "relative",
+    width: 24,
+    height: 30,
+    display: "grid",
+    justifyItems: "center",
+    alignItems: "start",
+    pointerEvents: "none",
+  };
+  const webcamMarkerFaceStyle: React.CSSProperties = {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    background: "linear-gradient(180deg, #38bdf8 0%, #0284c7 100%)",
+    border: "2px solid #ffffff",
+    boxShadow: "0 4px 10px rgba(2,132,199,0.35)",
+    display: "grid",
+    placeItems: "center",
+  };
+  const webcamMarkerTailStyle: React.CSSProperties = {
+    position: "absolute",
+    bottom: 0,
+    width: 0,
+    height: 0,
+    borderLeft: "6px solid transparent",
+    borderRight: "6px solid transparent",
+    borderTop: "8px solid #0284c7",
+  };
 
   // === State ===
   const [route, setRoute] = useState<LineLatLng>([]);
@@ -369,8 +410,8 @@ export default function MapView() {
     lon: 121.52,
   });
   const [zoom, setZoom] = useState<number>(13);
-  const [webcamFlyTarget, setWebcamFlyTarget] = useState<{ lat: number; lon: number } | null>(null);
   const [webcams, setWebcams] = useState<WebcamItem[]>([]);
+  const [activeWebcam, setActiveWebcam] = useState<WebcamItem | null>(null);
 
   // Start/End [lon, lat]
   const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
@@ -968,14 +1009,40 @@ export default function MapView() {
   }, [focusPt]);
 
   useEffect(() => {
-    if (!mapRef.current || !webcamFlyTarget) return;
-    const map = mapRef.current.getMap();
-    map.flyTo({
-      center: [webcamFlyTarget.lon, webcamFlyTarget.lat],
-      zoom: Math.max(map.getZoom(), 14),
-      duration: 800,
-    });
-  }, [webcamFlyTarget]);
+    if (!showWebcams) {
+      setWebcams([]);
+      setActiveWebcam(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      const p = new URLSearchParams({
+        lat: String(mapCenter.lat),
+        lon: String(mapCenter.lon),
+        radiusKm: "50",
+        limit: "20",
+      });
+      fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 })
+        .then((j) => {
+          if (!cancelled) {
+            const next = j.items ?? [];
+            setWebcams(next);
+            setActiveWebcam((prev) => {
+              if (!prev) return null;
+              const found = next.find((w) => (w.id != null && prev.id != null ? String(w.id) === String(prev.id) : w.lat === prev.lat && w.lon === prev.lon));
+              return found ?? null;
+            });
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setWebcams([]);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [showWebcams, mapCenter.lat, mapCenter.lon]);
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
@@ -1067,14 +1134,100 @@ export default function MapView() {
         ))}
 
         {/* Webcam markers */}
-        {webcams.map((w) => (
+        {showWebcams && webcams.map((w) => (
           <Marker
             key={`cam-${w.id || w.lat.toFixed(5)}-${w.lon.toFixed(5)}`}
             longitude={w.lon}
             latitude={w.lat}
-            color="#0284c7"
-          />
+            anchor="bottom"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setActiveWebcam(w);
+            }}
+          >
+            <div style={webcamMarkerWrapStyle} aria-label={`Webcam marker: ${w.title || "webcam"}`}>
+              <div style={webcamMarkerFaceStyle}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M4 8.5A2.5 2.5 0 0 1 6.5 6h7A2.5 2.5 0 0 1 16 8.5v1.2l2.5-1.5A1.5 1.5 0 0 1 21 9.5v5a1.5 1.5 0 0 1-2.5 1.3L16 14.3v1.2a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 4 15.5v-7Z"
+                    fill="#ffffff"
+                  />
+                  <circle cx="10" cy="12" r="2.25" fill="#0c4a6e" />
+                </svg>
+              </div>
+              <div style={webcamMarkerTailStyle} />
+            </div>
+          </Marker>
         ))}
+        {showWebcams && activeWebcam && (
+          <Popup
+            longitude={activeWebcam.lon}
+            latitude={activeWebcam.lat}
+            anchor="top"
+            closeOnClick={false}
+            onClose={() => setActiveWebcam(null)}
+            offset={10}
+            maxWidth="260px"
+          >
+            <div style={{ minWidth: 220, color: "#0f172a", background: "#ffffff", padding: 2 }}>
+              <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.25, marginBottom: 4, color: "#020617" }}>
+                {activeWebcam.title || "Webcam"}
+              </div>
+              {activeWebcam.provider ? (
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                  source: {activeWebcam.provider}
+                </div>
+              ) : null}
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", marginBottom: 8 }}>
+                {activeWebcam.city || activeWebcam.region || activeWebcam.country || `${activeWebcam.lat.toFixed(5)}, ${activeWebcam.lon.toFixed(5)}`}
+              </div>
+              {activeWebcam.preview ? (
+                <Image
+                  src={activeWebcam.preview}
+                  alt={activeWebcam.title || "webcam preview"}
+                  width={240}
+                  height={120}
+                  unoptimized
+                  style={{
+                    width: "100%",
+                    height: 120,
+                    objectFit: "cover",
+                    borderRadius: 6,
+                    border: "1px solid #e2e8f0",
+                    display: "block",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: 80,
+                    display: "grid",
+                    placeItems: "center",
+                    color: "#334155",
+                    background: "#f1f5f9",
+                    borderRadius: 6,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  no preview
+                </div>
+              )}
+              {activeWebcam.detailUrl ? (
+                <a
+                  href={activeWebcam.detailUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: "inline-block", marginTop: 8, color: "#1d4ed8", fontSize: 13, fontWeight: 700, textDecoration: "underline" }}
+                >
+                  Open stream/source
+                </a>
+              ) : null}
+            </div>
+          </Popup>
+        )}
 
         {/* Route with wind coloring and wind arrows */}
         {route.length > 0 && (
@@ -1130,30 +1283,11 @@ export default function MapView() {
         )}
       </Map>
 
-      {/* Left top: Webcams panel */}
+      {/* Left top: Webcam toggle */}
       <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1600 }}>
-        {showWebcams ? (
-          <div style={panelCardStyle}>
-            <div style={panelHeaderStyle}>
-              <span style={{ fontWeight: 600 }}>Webcams</span>
-              <button onClick={() => setShowWebcams(false)} style={closeButtonStyle} aria-label="Close webcams panel">
-                ✖
-              </button>
-            </div>
-            <WebcamsPanel
-              center={mapCenter}
-              onPick={(lat, lon) => {
-                setFocusIdx(null);
-                setWebcamFlyTarget({ lat, lon });
-              }}
-              onLoaded={setWebcams}
-            />
-          </div>
-        ) : (
-          <button onClick={() => setShowWebcams(true)} style={toggleButtonStyle}>
-            Show Webcams
-          </button>
-        )}
+        <button onClick={() => setShowWebcams((v) => !v)} style={toggleButtonStyle}>
+          {showWebcams ? "Hide Webcams" : "Show Webcams"}
+        </button>
       </div>
 
       <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1400 }}>
