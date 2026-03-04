@@ -53,6 +53,7 @@ type RouteDebug = {
   updatedAt: string;
   message?: string;
 };
+const WEBCAM_RADIUS_KM = 0.5;
 
 const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
@@ -204,6 +205,39 @@ function isValidCoordinate(lat: number, lon: number): boolean {
     lon <= 180 &&
     !(lat === 0 && lon === 0)
   );
+}
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const R = 6371e3;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function webcamKeyOf(w: WebcamItem): string {
+  if (w.id != null) return String(w.id);
+  return `${w.lat.toFixed(6)},${w.lon.toFixed(6)}`;
+}
+
+function sampleRoutePoints(route: LineLatLng, maxPoints = 8): { lat: number; lon: number }[] {
+  if (route.length === 0) return [];
+  if (route.length <= maxPoints) return route.map(([lat, lon]) => ({ lat, lon }));
+  const step = Math.max(1, Math.floor((route.length - 1) / (maxPoints - 1)));
+  const out: { lat: number; lon: number }[] = [];
+  for (let i = 0; i < route.length; i += step) {
+    const [lat, lon] = route[i];
+    out.push({ lat, lon });
+    if (out.length >= maxPoints - 1) break;
+  }
+  const last = route[route.length - 1];
+  if (!out.length || out[out.length - 1].lat !== last[0] || out[out.length - 1].lon !== last[1]) {
+    out.push({ lat: last[0], lon: last[1] });
+  }
+  return out.slice(0, maxPoints);
 }
 
 // Fetch JSON with retry and timeout
@@ -430,7 +464,7 @@ export default function MapView() {
   const [panelHoverIdx, setPanelHoverIdx] = useState<number | null>(null);
 
   // Show/hide panels
-  const [showWebcams, setShowWebcams] = useState(true);
+  const [showWebcams, setShowWebcams] = useState(false);
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
   const [, setRouteDebug] = useState<RouteDebug | null>(null);
@@ -899,6 +933,30 @@ export default function MapView() {
     });
   };
 
+  const clearRoute = () => {
+    // Invalidate any in-flight routing response so it cannot repopulate cleared state.
+    latestRouteReqRef.current += 1;
+    setStartLonLat(null);
+    setEndLonLat(null);
+    setStartLabel("");
+    setEndLabel("");
+    setWaypointInputs([]);
+    setRoute([]);
+    setWinds([]);
+    setElevPts([]);
+    setCursorPt(null);
+    setFocusIdx(null);
+    setPanelHoverIdx(null);
+    setPickMode("none");
+    setPendingWaypointIndex(null);
+    setShowWebcams(false);
+    setWebcams([]);
+    setActiveWebcam(null);
+    writeQuery(null, null);
+    // Also reset routing panel local state if needed
+    // (handled by onWaypointsChange and props)
+  };
+
   const applyRoutePreset = async (presetId: string) => {
     const preset = TAIPEI_ROUTE_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
@@ -1009,23 +1067,76 @@ export default function MapView() {
   }, [focusPt]);
 
   useEffect(() => {
+    if (route.length > 1) {
+      setShowWebcams(true);
+    }
+  }, [route.length]);
+
+  useEffect(() => {
     if (!showWebcams) {
       setWebcams([]);
       setActiveWebcam(null);
       return;
     }
-    let cancelled = false;
-    const t = setTimeout(() => {
+
+    const fetchAroundCenter = async () => {
       const p = new URLSearchParams({
         lat: String(mapCenter.lat),
         lon: String(mapCenter.lon),
-        radiusKm: "50",
-        limit: "20",
+        radiusKm: String(WEBCAM_RADIUS_KM),
+        limit: "30",
       });
-      fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 })
+      const j = await fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 });
+      return j.items ?? [];
+    };
+
+    const fetchAroundRoute = async () => {
+      const anchors = sampleRoutePoints(route, 8);
+      if (anchors.length === 0) return [] as WebcamItem[];
+      const lists = await Promise.all(
+        anchors.map(async (pt) => {
+          const p = new URLSearchParams({
+            lat: String(pt.lat),
+            lon: String(pt.lon),
+            radiusKm: String(WEBCAM_RADIUS_KM),
+            limit: "30",
+          });
+          const j = await fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 });
+          return j.items ?? [];
+        })
+      );
+      const merged = new globalThis.Map<string, WebcamItem>();
+      for (const row of lists.flat()) {
+        const key = webcamKeyOf(row);
+        const prev = merged.get(key);
+        if (!prev) {
+          merged.set(key, row);
+          continue;
+        }
+        const d = Math.min(prev.distance ?? Number.POSITIVE_INFINITY, row.distance ?? Number.POSITIVE_INFINITY);
+        merged.set(key, { ...prev, ...row, distance: Number.isFinite(d) ? d : prev.distance });
+      }
+      const routePts = route.length > 0 ? route : anchors.map((a) => [a.lat, a.lon] as [number, number]);
+      const withRouteDistance = Array.from(merged.values()).map((cam) => {
+        const minToRoute = routePts.reduce((best, [rlat, rlon]) => {
+          const d = haversineMeters(cam.lat, cam.lon, rlat, rlon);
+          return d < best ? d : best;
+        }, Number.POSITIVE_INFINITY);
+        return { ...cam, distance: Math.round(minToRoute) };
+      });
+      return withRouteDistance
+        .filter((cam) => (cam.distance ?? Number.POSITIVE_INFINITY) <= WEBCAM_RADIUS_KM * 1000 + 10)
+        .sort((a, b) => (a.distance ?? Number.POSITIVE_INFINITY) - (b.distance ?? Number.POSITIVE_INFINITY))
+        .slice(0, 50);
+    };
+
+    let cancelled = false;
+    const t = setTimeout(() => {
+      const task = route.length > 1 ? fetchAroundRoute() : fetchAroundCenter();
+      task
         .then((j) => {
           if (!cancelled) {
-            const next = j.items ?? [];
+            const next = j;
             setWebcams(next);
             setActiveWebcam((prev) => {
               if (!prev) return null;
@@ -1042,7 +1153,7 @@ export default function MapView() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [showWebcams, mapCenter.lat, mapCenter.lon]);
+  }, [showWebcams, mapCenter.lat, mapCenter.lon, route]);
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
@@ -1294,7 +1405,8 @@ export default function MapView() {
         <div
           style={{
             ...panelCardStyle,
-            maxHeight: "78vh",
+            width: "min(380px, calc(100vw - 24px))",
+            maxHeight: "60vh",
             overflowY: "auto",
             overflowX: "hidden",
             overscrollBehavior: "contain",
@@ -1326,6 +1438,7 @@ export default function MapView() {
             onClearEnd={clearEnd}
             onMoveStartDown={moveStartDown}
             onMoveEndUp={moveEndUp}
+            onClearRoute={clearRoute}
             onPickOnMap={(role, wpIdx) => beginMapPick(role, wpIdx)}
             pickMode={pickMode}
             pendingWaypointIndex={pendingWaypointIndex}
