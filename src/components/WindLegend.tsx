@@ -13,8 +13,9 @@ const SLOPE_BINS = [
 ];
 
 export default function WindLegend({ mode = "wind", onToggleMode }: Props) {
-  const routeBins = mode === "slope" ? SLOPE_BINS : ROUTE_WIND_ANGLE_BINS;
+  const routeBins = (mode === "slope" ? SLOPE_BINS : ROUTE_WIND_ANGLE_BINS).slice().reverse();
   const routeTitle = mode === "slope" ? "Route Slope" : "Route vs Wind Angle";
+  const windSpeedBins = WIND_BINS_MS.slice().reverse();
 
   return (
     <div
@@ -75,7 +76,7 @@ export default function WindLegend({ mode = "wind", onToggleMode }: Props) {
       <div style={{ fontSize: 12, color: "#1e293b", fontWeight: 700, marginBottom: 6 }}>
         Wind Speed (m/s)
       </div>
-      {WIND_BINS_MS.map((b, i) => (
+      {windSpeedBins.map((b, i) => (
         <div key={`speed-${i}`} style={{ display: "flex", alignItems: "center", margin: "4px 0" }}>
           <span
             style={{
