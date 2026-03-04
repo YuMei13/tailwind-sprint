@@ -7,9 +7,11 @@ type Props = {
 };
 
 const SLOPE_BINS = [
-  { label: "< 5%", color: "#16a34a" },
-  { label: "5% - 10%", color: "#f97316" },
-  { label: "> 10%", color: "#dc2626" },
+  { label: "< 3%", color: "#16a34a" },
+  { label: "4% - 6%", color: "#facc15" },
+  { label: "7% - 9%", color: "#f97316" },
+  { label: "10% - 12%", color: "#dc2626" },
+  { label: "> 13%", color: "#92400e" },
 ];
 
 export default function WindLegend({ mode = "wind", onToggleMode }: Props) {

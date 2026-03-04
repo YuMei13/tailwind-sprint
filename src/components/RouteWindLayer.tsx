@@ -28,8 +28,10 @@ type Props = {
 
 const FALLBACK_COLOR = "#6b7280";
 const SLOPE_GREEN = "#16a34a";
+const SLOPE_YELLOW = "#facc15";
 const SLOPE_ORANGE = "#f97316";
 const SLOPE_RED = "#dc2626";
+const SLOPE_BROWN = "#92400e";
 
 function normalizeDeg(v: number) {
   const x = v % 360;
@@ -137,9 +139,11 @@ function interpolateY(xs: number[], ys: number[], x: number): number | undefined
 }
 
 function slopeColor(slopePercent: number): string {
-  if (slopePercent < 5) return SLOPE_GREEN;
+  if (slopePercent < 3) return SLOPE_GREEN;
+  if (slopePercent < 7) return SLOPE_YELLOW;
   if (slopePercent < 10) return SLOPE_ORANGE;
-  return SLOPE_RED;
+  if (slopePercent < 13) return SLOPE_RED;
+  return SLOPE_BROWN;
 }
 
 export default function RouteWindLayer({
