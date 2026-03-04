@@ -24,6 +24,7 @@ type Props = {
   onClearEnd?: () => void;
   onMoveStartDown?: () => void;
   onMoveEndUp?: () => void;
+  onSwapStartEnd?: () => void;
   onClearRoute?: () => void;
   pickMode?: "none" | "start" | "end" | "waypoint";
   pendingWaypointIndex?: number | null;
@@ -157,6 +158,7 @@ export default function MapboxRoutingPanel({
   onClearEnd,
   onMoveStartDown,
   onMoveEndUp,
+  onSwapStartEnd,
   onClearRoute,
   pickMode = "none",
   pendingWaypointIndex = null,
@@ -846,6 +848,24 @@ export default function MapboxRoutingPanel({
           + Add Stop On Map
         </button>
       </div>
+      <button
+        type="button"
+        onClick={onSwapStartEnd}
+        disabled={!startLatLon || !endLatLon}
+        style={{
+          width: "100%",
+          padding: "8px 12px",
+          borderRadius: 8,
+          border: "1px solid #bfdbfe",
+          background: "#eff6ff",
+          color: !startLatLon || !endLatLon ? "#94a3b8" : "#1d4ed8",
+          cursor: !startLatLon || !endLatLon ? "not-allowed" : "pointer",
+          fontSize: 13,
+          fontWeight: 700,
+        }}
+      >
+        Swap Start / End
+      </button>
       <button
         type="button"
         onClick={(e) => {

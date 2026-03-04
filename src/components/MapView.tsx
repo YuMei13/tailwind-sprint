@@ -934,6 +934,24 @@ export default function MapView() {
     });
   };
 
+  const swapStartEnd = () => {
+    if (!startLonLat || !endLonLat) return;
+    const nextStart = endLonLat;
+    const nextEnd = startLonLat;
+    const nextStartLabel =
+      endLabel || `${endLonLat[1].toFixed(5)}, ${endLonLat[0].toFixed(5)}`;
+    const nextEndLabel =
+      startLabel || `${startLonLat[1].toFixed(5)}, ${startLonLat[0].toFixed(5)}`;
+    setStartLonLat(nextStart);
+    setEndLonLat(nextEnd);
+    setStartLabel(nextStartLabel);
+    setEndLabel(nextEndLabel);
+    setWaypointInputs((prev) => [...prev].reverse());
+    setPickMode("none");
+    setPendingWaypointIndex(null);
+    writeQuery(nextStart, nextEnd);
+  };
+
   const clearRoute = () => {
     // Invalidate any in-flight routing response so it cannot repopulate cleared state.
     latestRouteReqRef.current += 1;
@@ -1446,6 +1464,7 @@ export default function MapView() {
             onClearEnd={clearEnd}
             onMoveStartDown={moveStartDown}
             onMoveEndUp={moveEndUp}
+            onSwapStartEnd={swapStartEnd}
             onClearRoute={clearRoute}
             onPickOnMap={(role, wpIdx) => beginMapPick(role, wpIdx)}
             pickMode={pickMode}
