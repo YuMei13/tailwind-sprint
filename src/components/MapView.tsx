@@ -467,6 +467,7 @@ export default function MapView() {
   const [showWebcams, setShowWebcams] = useState(false);
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
+  const [routeColorMode, setRouteColorMode] = useState<"wind" | "slope">("wind");
   const [, setRouteDebug] = useState<RouteDebug | null>(null);
   const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
   const latestRouteReqRef = useRef<number>(0);
@@ -1342,7 +1343,14 @@ export default function MapView() {
 
         {/* Route with wind coloring and wind arrows */}
         {route.length > 0 && (
-          <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />
+          <RouteWindLayer
+            route={route}
+            winds={winds}
+            elevPts={elevPts}
+            mode={routeColorMode}
+            weight={6}
+            segmentMeters={segmentMeters}
+          />
         )}
 
         {/* Cursor highlight */}
@@ -1406,7 +1414,7 @@ export default function MapView() {
           style={{
             ...panelCardStyle,
             width: "min(380px, calc(100vw - 24px))",
-            maxHeight: "60vh",
+            maxHeight: "56vh",
             overflowY: "auto",
             overflowX: "hidden",
             overscrollBehavior: "contain",
@@ -1507,7 +1515,10 @@ export default function MapView() {
           )}
         </div>
         <div style={{ fontSize: 12, color: "#1e293b" }}>
-          <WindLegend />
+          <WindLegend
+            mode={routeColorMode}
+            onToggleMode={() => setRouteColorMode((prev) => (prev === "wind" ? "slope" : "wind"))}
+          />
         </div>
       </div>
 

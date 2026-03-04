@@ -20,11 +20,16 @@ type LatLng = [number, number];
 type Props = {
   route: LatLng[];
   winds: WindPoint[];
+  elevPts?: Array<{ lat: number; lon: number; elevation?: number }>;
+  mode?: "wind" | "slope";
   weight?: number;
   segmentMeters?: number;
 };
 
 const FALLBACK_COLOR = "#6b7280";
+const SLOPE_GREEN = "#16a34a";
+const SLOPE_ORANGE = "#f97316";
+const SLOPE_RED = "#dc2626";
 
 function normalizeDeg(v: number) {
   const x = v % 360;
@@ -111,9 +116,37 @@ function sliceBetween(route: LatLng[], cum: number[], d0: number, d1: number): L
   return out.length >= 2 ? out : [];
 }
 
+function interpolateY(xs: number[], ys: number[], x: number): number | undefined {
+  if (xs.length === 0 || ys.length === 0 || xs.length !== ys.length) return undefined;
+  if (x <= xs[0]) return ys[0];
+  const last = xs.length - 1;
+  if (x >= xs[last]) return ys[last];
+  for (let i = 1; i < xs.length; i++) {
+    if (x <= xs[i]) {
+      const x0 = xs[i - 1];
+      const x1 = xs[i];
+      const y0 = ys[i - 1];
+      const y1 = ys[i];
+      const span = x1 - x0;
+      if (span <= 0) return y0;
+      const t = (x - x0) / span;
+      return y0 + (y1 - y0) * t;
+    }
+  }
+  return ys[last];
+}
+
+function slopeColor(slopePercent: number): string {
+  if (slopePercent < 5) return SLOPE_GREEN;
+  if (slopePercent < 10) return SLOPE_ORANGE;
+  return SLOPE_RED;
+}
+
 export default function RouteWindLayer({
   route,
   winds,
+  elevPts = [],
+  mode = "wind",
   weight = 6,
   segmentMeters = 500,
 }: Props) {
@@ -149,6 +182,12 @@ export default function RouteWindLayer({
 
   const segLen = Math.max(50, segmentMeters);
   const segCount = Math.max(1, Math.ceil(total / segLen));
+  const validElev = elevPts.filter(
+    (p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && Number.isFinite(p.elevation)
+  ) as Array<{ lat: number; lon: number; elevation: number }>;
+  const elevCum = cumulativeDistances(validElev.map((p) => [p.lat, p.lon] as LatLng));
+  const elevVals = validElev.map((p) => p.elevation);
+  const elevTotal = elevCum.length ? elevCum[elevCum.length - 1] : 0;
 
   const segments: { pts: LatLng[]; color: string; idx: number }[] = [];
   for (let k = 0; k < segCount; k++) {
@@ -158,12 +197,24 @@ export default function RouteWindLayer({
     if (pts.length < 2) continue;
 
     const midPt = pts[Math.floor(pts.length / 2)] ?? pts[0];
-    const windDir = nearestWindDirDeg(winds, midPt);
     let color = FALLBACK_COLOR;
-    if (typeof windDir === "number") {
-      const routeDir = bearingDeg(pts[0], pts[pts.length - 1]);
-      const angle = smallestAngleDiffDeg(routeDir, windDir);
-      color = routeWindAngleToColor(angle);
+    if (mode === "slope") {
+      if (elevTotal > 0 && total > 0) {
+        const e0 = interpolateY(elevCum, elevVals, (d0 / total) * elevTotal);
+        const e1 = interpolateY(elevCum, elevVals, (d1 / total) * elevTotal);
+        if (typeof e0 === "number" && typeof e1 === "number") {
+          const horizontal = Math.max(1, d1 - d0);
+          const slopePct = (Math.abs(e1 - e0) / horizontal) * 100;
+          color = slopeColor(slopePct);
+        }
+      }
+    } else {
+      const windDir = nearestWindDirDeg(winds, midPt);
+      if (typeof windDir === "number") {
+        const routeDir = bearingDeg(pts[0], pts[pts.length - 1]);
+        const angle = smallestAngleDiffDeg(routeDir, windDir);
+        color = routeWindAngleToColor(angle);
+      }
     }
 
     segments.push({ pts, color, idx: k });
