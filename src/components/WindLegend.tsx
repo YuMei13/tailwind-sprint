@@ -7,6 +7,7 @@ type Props = {
 };
 
 const SLOPE_BINS = [
+  { label: "< 0% (Downhill)", color: "#2563eb" },
   { label: "< 3%", color: "#16a34a" },
   { label: "4% - 6%", color: "#facc15" },
   { label: "7% - 9%", color: "#f97316" },
