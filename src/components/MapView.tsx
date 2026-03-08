@@ -1300,8 +1300,31 @@ export default function MapView() {
             maxWidth="260px"
           >
             <div style={{ minWidth: 220, color: "#0f172a", background: "#ffffff", padding: 2 }}>
-              <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.25, marginBottom: 4, color: "#020617" }}>
-                {activeWebcam.title || "Webcam"}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.25, color: "#020617" }}>
+                  {activeWebcam.title || "Webcam"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveWebcam(null)}
+                  aria-label="Close webcam popup"
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 999,
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#334155",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    lineHeight: "18px",
+                    textAlign: "center",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  ✕
+                </button>
               </div>
               {activeWebcam.provider ? (
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.3 }}>

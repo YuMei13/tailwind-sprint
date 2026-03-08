@@ -173,11 +173,21 @@ export default function MapboxRoutingPanel({
   );
 
   useEffect(() => {
-    setStartQ(startLabelProp ?? "");
+    const next = startLabelProp ?? "";
+    setStartQ(next);
+    if (next) {
+      confirmedLabelRef.current.start = next;
+      setStartList([]);
+    }
   }, [startLabelProp]);
 
   useEffect(() => {
-    setEndQ(endLabelProp ?? "");
+    const next = endLabelProp ?? "";
+    setEndQ(next);
+    if (next) {
+      confirmedLabelRef.current.end = next;
+      setEndList([]);
+    }
   }, [endLabelProp]);
 
   useEffect(() => {

@@ -82,14 +82,19 @@ export default function WindLegend({ mode = "wind", onToggleMode }: Props) {
         <div key={`speed-${i}`} style={{ display: "flex", alignItems: "center", margin: "4px 0" }}>
           <span
             style={{
-              display: "inline-block",
-              width: 16,
-              height: 10,
-              borderRadius: 3,
-              background: b.color,
+              display: "inline-flex",
+              width: 20,
+              height: 14,
+              alignItems: "center",
+              justifyContent: "center",
               marginRight: 8,
             }}
-          />
+          >
+            <svg width="18" height="12" viewBox="0 0 24 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <line x1="2" y1="8" x2="18" y2="8" stroke={b.color} strokeWidth="2" strokeLinecap="round" />
+              <polygon points="16,4 24,8 16,12" fill={b.color} />
+            </svg>
+          </span>
           <span>{b.label}</span>
         </div>
       ))}
