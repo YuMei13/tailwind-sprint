@@ -27,6 +27,7 @@ type Props = {
 };
 
 const FALLBACK_COLOR = "#6b7280";
+const SLOPE_BLUE = "#2563eb";
 const SLOPE_GREEN = "#16a34a";
 const SLOPE_YELLOW = "#facc15";
 const SLOPE_ORANGE = "#f97316";
@@ -139,6 +140,7 @@ function interpolateY(xs: number[], ys: number[], x: number): number | undefined
 }
 
 function slopeColor(slopePercent: number): string {
+  if (slopePercent < 0) return SLOPE_BLUE;
   if (slopePercent < 3) return SLOPE_GREEN;
   if (slopePercent < 7) return SLOPE_YELLOW;
   if (slopePercent < 10) return SLOPE_ORANGE;
@@ -208,7 +210,8 @@ export default function RouteWindLayer({
         const e1 = interpolateY(elevCum, elevVals, (d1 / total) * elevTotal);
         if (typeof e0 === "number" && typeof e1 === "number") {
           const horizontal = Math.max(1, d1 - d0);
-          const slopePct = (Math.abs(e1 - e0) / horizontal) * 100;
+          // Signed slope: downhill is negative, uphill is positive.
+          const slopePct = ((e1 - e0) / horizontal) * 100;
           color = slopeColor(slopePct);
         }
       }
