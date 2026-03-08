@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { haversine } from "@/lib/geo";
 
 export type ElevPt = { lat: number; lon: number; elevation?: number; error?: true };
@@ -21,6 +21,29 @@ export default function ElevationPanel({
   selectedIndex = null,
   externalHoverIndex = null,
 }: Props) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [chartWidth, setChartWidth] = useState<number>(580);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const next = Math.max(220, Math.floor(el.clientWidth - 20));
+      setChartWidth(next);
+    };
+    update();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(() => update());
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
   // === 1. 計算序列 ===
   const series = useMemo(() => {
     const ok: { lat: number; lon: number; elevation: number }[] = [];
@@ -56,21 +79,27 @@ export default function ElevationPanel({
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const lastSentIdxRef = useRef<number | null>(null);
 
-  const W = 580, H = 230;
+  const W = chartWidth, H = 230;
   const Pleft = 60, Pright = 25, Ptop = 25, Pbottom = 45;
   const ready = series.dist.length >= 2;
 
-  const x = (d: number) => Pleft + (d / Math.max(1, series.total)) * (W - Pleft - Pright);
-  const y = (z: number) => {
-    const range = Math.max(1, series.max - series.min);
-    return H - Pbottom - ((z - series.min) / range) * (H - Ptop - Pbottom);
-  };
+  const x = useCallback(
+    (d: number) => Pleft + (d / Math.max(1, series.total)) * (W - Pleft - Pright),
+    [Pleft, Pright, W, series.total]
+  );
+  const y = useCallback(
+    (z: number) => {
+      const range = Math.max(1, series.max - series.min);
+      return H - Pbottom - ((z - series.min) / range) * (H - Ptop - Pbottom);
+    },
+    [Pbottom, Ptop, H, series.max, series.min]
+  );
 
   // === 3. 路徑與 hover ===
   const pathD = useMemo(() => {
     if (!ready) return "";
     return series.dist.map((d, i) => `${i === 0 ? "M" : "L"}${x(d)},${y(series.elev[i])}`).join(" ");
-  }, [series, ready]);
+  }, [series, ready, x, y]);
 
   const hoverDist =
     hoverX != null && ready
@@ -105,7 +134,7 @@ export default function ElevationPanel({
       const origIdx = series.mapIdx[best];
       onHover?.(points[origIdx], origIdx);
     }
-  }, [hoverDist, hoverX, ready, points, series]);
+  }, [hoverDist, hoverX, ready, points, series, hoverIdx, onHover]);
 
   // === 4. 刻度 ===
   const kmTotal = series.total / 1000;
@@ -147,6 +176,7 @@ export default function ElevationPanel({
   // === 6. Render ===
   return (
     <div
+      ref={containerRef}
       style={{
         background: "rgba(255,255,255,0.95)",
         borderRadius: 8,

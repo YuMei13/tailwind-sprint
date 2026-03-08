@@ -548,7 +548,7 @@ export default function MapboxRoutingPanel({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: 360 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
       {routePresets.length > 0 && (
         <div
           style={{

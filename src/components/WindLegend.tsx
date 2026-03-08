@@ -25,10 +25,12 @@ export default function WindLegend({ mode = "wind", onToggleMode }: Props) {
       style={{
         background: "rgba(255,255,255,0.95)",
         borderRadius: 8,
-        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        padding: "10px 12px",
-        fontSize: 13,
-        lineHeight: 1.3,
+        boxShadow: "0 4px 12px rgba(0,0,0,0.14)",
+        padding: "9px 10px",
+        fontSize: 12,
+        lineHeight: 1.2,
+        width: "100%",
+        maxWidth: "100%",
       }}
     >
       <button
@@ -36,9 +38,9 @@ export default function WindLegend({ mode = "wind", onToggleMode }: Props) {
         onClick={onToggleMode}
         style={{
           width: "100%",
-          padding: "7px 10px",
-          marginBottom: 8,
-          borderRadius: 6,
+          padding: "6px 8px",
+          marginBottom: 7,
+          borderRadius: 5,
           border: "1px solid #cbd5e1",
           background: "#f8fafc",
           color: "#0f172a",
@@ -49,19 +51,19 @@ export default function WindLegend({ mode = "wind", onToggleMode }: Props) {
       >
         {mode === "wind" ? "Switch to Slope" : "Switch to Wind Angle"}
       </button>
-      <div style={{ fontSize: 12, color: "#1e293b", fontWeight: 700, marginBottom: 6 }}>
+      <div style={{ fontSize: 12, color: "#1e293b", fontWeight: 700, marginBottom: 5 }}>
         {routeTitle}
       </div>
       {routeBins.map((b, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", margin: "4px 0" }}>
+        <div key={i} style={{ display: "flex", alignItems: "center", margin: "3px 0" }}>
           <span
             style={{
               display: "inline-block",
-              width: 16,
-              height: 10,
+              width: 14,
+              height: 9,
               borderRadius: 3,
               background: b.color,
-              marginRight: 8,
+              marginRight: 6,
             }}
           />
           <span>{b.label}</span>
@@ -72,26 +74,26 @@ export default function WindLegend({ mode = "wind", onToggleMode }: Props) {
         style={{
           height: 1,
           background: "#e2e8f0",
-          margin: "8px 0",
+          margin: "7px 0",
         }}
       />
 
-      <div style={{ fontSize: 12, color: "#1e293b", fontWeight: 700, marginBottom: 6 }}>
+      <div style={{ fontSize: 12, color: "#1e293b", fontWeight: 700, marginBottom: 5 }}>
         Wind Speed (m/s)
       </div>
       {windSpeedBins.map((b, i) => (
-        <div key={`speed-${i}`} style={{ display: "flex", alignItems: "center", margin: "4px 0" }}>
+        <div key={`speed-${i}`} style={{ display: "flex", alignItems: "center", margin: "3px 0" }}>
           <span
             style={{
               display: "inline-flex",
-              width: 20,
-              height: 14,
+              width: 18,
+              height: 11,
               alignItems: "center",
               justifyContent: "center",
-              marginRight: 8,
+              marginRight: 6,
             }}
           >
-            <svg width="18" height="12" viewBox="0 0 24 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <svg width="15" height="10" viewBox="0 0 24 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <line x1="2" y1="8" x2="18" y2="8" stroke={b.color} strokeWidth="2" strokeLinecap="round" />
               <polygon points="16,4 24,8 16,12" fill={b.color} />
             </svg>
