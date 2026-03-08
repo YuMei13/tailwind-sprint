@@ -1,15 +1,15 @@
 // src/components/MapView.tsx
 "use client";
 
-import Map, { Marker, Source, Layer, NavigationControl, MapRef } from "react-map-gl";
+import Map, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MapMouseEvent } from "mapbox-gl";
+import Image from "next/image";
 import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWindLayer";
 import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import SegmentationControls from "@/components/SegmentationControls";
-import WebcamsPanel, { WebcamItem } from "@/components/WebcamsPanel";
 import MapboxRoutingPanel, { type Role as RoutingPanelRole } from "@/components/MapboxRoutingPanel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -19,6 +19,19 @@ type LonLat = [number, number];
 
 type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
+type WebcamItem = {
+  id?: string | number;
+  provider?: "windy" | "twipcam" | "both";
+  title?: string;
+  lat: number;
+  lon: number;
+  distance?: number;
+  city?: string;
+  region?: string;
+  country?: string;
+  detailUrl?: string;
+  preview?: string;
+};
 type RouteSource = "planned";
 type WaypointInput = { label: string; lonLat: LonLat | null };
 type PresetStop = { name: string; lonLat: LonLat };
@@ -40,6 +53,7 @@ type RouteDebug = {
   updatedAt: string;
   message?: string;
 };
+const WEBCAM_RADIUS_KM = 0.5;
 
 const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
@@ -191,6 +205,39 @@ function isValidCoordinate(lat: number, lon: number): boolean {
     lon <= 180 &&
     !(lat === 0 && lon === 0)
   );
+}
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const R = 6371e3;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function webcamKeyOf(w: WebcamItem): string {
+  if (w.id != null) return String(w.id);
+  return `${w.lat.toFixed(6)},${w.lon.toFixed(6)}`;
+}
+
+function sampleRoutePoints(route: LineLatLng, maxPoints = 8): { lat: number; lon: number }[] {
+  if (route.length === 0) return [];
+  if (route.length <= maxPoints) return route.map(([lat, lon]) => ({ lat, lon }));
+  const step = Math.max(1, Math.floor((route.length - 1) / (maxPoints - 1)));
+  const out: { lat: number; lon: number }[] = [];
+  for (let i = 0; i < route.length; i += step) {
+    const [lat, lon] = route[i];
+    out.push({ lat, lon });
+    if (out.length >= maxPoints - 1) break;
+  }
+  const last = route[route.length - 1];
+  if (!out.length || out[out.length - 1].lat !== last[0] || out[out.length - 1].lon !== last[1]) {
+    out.push({ lat: last[0], lon: last[1] });
+  }
+  return out.slice(0, maxPoints);
 }
 
 // Fetch JSON with retry and timeout
@@ -358,6 +405,34 @@ export default function MapView() {
     alignItems: "center",
     marginBottom: 6,
   };
+  const webcamMarkerWrapStyle: React.CSSProperties = {
+    position: "relative",
+    width: 24,
+    height: 30,
+    display: "grid",
+    justifyItems: "center",
+    alignItems: "start",
+    pointerEvents: "none",
+  };
+  const webcamMarkerFaceStyle: React.CSSProperties = {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    background: "linear-gradient(180deg, #38bdf8 0%, #0284c7 100%)",
+    border: "2px solid #ffffff",
+    boxShadow: "0 4px 10px rgba(2,132,199,0.35)",
+    display: "grid",
+    placeItems: "center",
+  };
+  const webcamMarkerTailStyle: React.CSSProperties = {
+    position: "absolute",
+    bottom: 0,
+    width: 0,
+    height: 0,
+    borderLeft: "6px solid transparent",
+    borderRight: "6px solid transparent",
+    borderTop: "8px solid #0284c7",
+  };
 
   // === State ===
   const [route, setRoute] = useState<LineLatLng>([]);
@@ -369,8 +444,8 @@ export default function MapView() {
     lon: 121.52,
   });
   const [zoom, setZoom] = useState<number>(13);
-  const [webcamFlyTarget, setWebcamFlyTarget] = useState<{ lat: number; lon: number } | null>(null);
   const [webcams, setWebcams] = useState<WebcamItem[]>([]);
+  const [activeWebcam, setActiveWebcam] = useState<WebcamItem | null>(null);
 
   // Start/End [lon, lat]
   const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
@@ -389,9 +464,10 @@ export default function MapView() {
   const [panelHoverIdx, setPanelHoverIdx] = useState<number | null>(null);
 
   // Show/hide panels
-  const [showWebcams, setShowWebcams] = useState(true);
+  const [showWebcams, setShowWebcams] = useState(false);
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
+  const [routeColorMode, setRouteColorMode] = useState<"wind" | "slope">("wind");
   const [, setRouteDebug] = useState<RouteDebug | null>(null);
   const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
   const latestRouteReqRef = useRef<number>(0);
@@ -858,6 +934,111 @@ export default function MapView() {
     });
   };
 
+  const swapStartEnd = () => {
+    if (!startLonLat || !endLonLat) return;
+    const nextStart = endLonLat;
+    const nextEnd = startLonLat;
+    const nextStartLabel =
+      endLabel || `${endLonLat[1].toFixed(5)}, ${endLonLat[0].toFixed(5)}`;
+    const nextEndLabel =
+      startLabel || `${startLonLat[1].toFixed(5)}, ${startLonLat[0].toFixed(5)}`;
+    setStartLonLat(nextStart);
+    setEndLonLat(nextEnd);
+    setStartLabel(nextStartLabel);
+    setEndLabel(nextEndLabel);
+    setWaypointInputs((prev) => [...prev].reverse());
+    setPickMode("none");
+    setPendingWaypointIndex(null);
+    writeQuery(nextStart, nextEnd);
+  };
+
+  const clearRoute = () => {
+    // Invalidate any in-flight routing response so it cannot repopulate cleared state.
+    latestRouteReqRef.current += 1;
+    setStartLonLat(null);
+    setEndLonLat(null);
+    setStartLabel("");
+    setEndLabel("");
+    setWaypointInputs([]);
+    setRoute([]);
+    setWinds([]);
+    setElevPts([]);
+    setCursorPt(null);
+    setFocusIdx(null);
+    setPanelHoverIdx(null);
+    setPickMode("none");
+    setPendingWaypointIndex(null);
+    setShowWebcams(false);
+    setWebcams([]);
+    setActiveWebcam(null);
+    writeQuery(null, null);
+    // Also reset routing panel local state if needed
+    // (handled by onWaypointsChange and props)
+  };
+
+  const downloadRouteGpx = () => {
+    if (route.length < 2) return;
+    const esc = (s: string) =>
+      s
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&apos;");
+    const now = new Date();
+    const iso = now.toISOString();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const name = "Tailwind Sprint Route";
+
+    const wptLines: string[] = [];
+    if (startLonLat) {
+      const label = startLabel || "Start";
+      wptLines.push(`  <wpt lat="${startLonLat[1].toFixed(6)}" lon="${startLonLat[0].toFixed(6)}"><name>${esc(label)}</name></wpt>`);
+    }
+    waypointInputs.forEach((w, idx) => {
+      if (!w.lonLat) return;
+      const label = w.label || `Stop ${idx + 1}`;
+      wptLines.push(`  <wpt lat="${w.lonLat[1].toFixed(6)}" lon="${w.lonLat[0].toFixed(6)}"><name>${esc(label)}</name></wpt>`);
+    });
+    if (endLonLat) {
+      const label = endLabel || "End";
+      wptLines.push(`  <wpt lat="${endLonLat[1].toFixed(6)}" lon="${endLonLat[0].toFixed(6)}"><name>${esc(label)}</name></wpt>`);
+    }
+
+    const trkptLines = route.map(
+      ([lat, lon]) => `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"></trkpt>`
+    );
+
+    const gpx = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<gpx version="1.1" creator="Tailwind Sprint" xmlns="http://www.topografix.com/GPX/1/1">',
+      "  <metadata>",
+      `    <name>${name}</name>`,
+      `    <time>${iso}</time>`,
+      "  </metadata>",
+      ...wptLines,
+      "  <trk>",
+      `    <name>${name}</name>`,
+      "    <trkseg>",
+      ...trkptLines,
+      "    </trkseg>",
+      "  </trk>",
+      "</gpx>",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([gpx], { type: "application/gpx+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tailwind-sprint-route-${stamp}.gpx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const applyRoutePreset = async (presetId: string) => {
     const preset = TAIPEI_ROUTE_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
@@ -968,14 +1149,93 @@ export default function MapView() {
   }, [focusPt]);
 
   useEffect(() => {
-    if (!mapRef.current || !webcamFlyTarget) return;
-    const map = mapRef.current.getMap();
-    map.flyTo({
-      center: [webcamFlyTarget.lon, webcamFlyTarget.lat],
-      zoom: Math.max(map.getZoom(), 14),
-      duration: 800,
-    });
-  }, [webcamFlyTarget]);
+    if (route.length > 1) {
+      setShowWebcams(true);
+    }
+  }, [route.length]);
+
+  useEffect(() => {
+    if (!showWebcams) {
+      setWebcams([]);
+      setActiveWebcam(null);
+      return;
+    }
+
+    const fetchAroundCenter = async () => {
+      const p = new URLSearchParams({
+        lat: String(mapCenter.lat),
+        lon: String(mapCenter.lon),
+        radiusKm: String(WEBCAM_RADIUS_KM),
+        limit: "30",
+      });
+      const j = await fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 });
+      return j.items ?? [];
+    };
+
+    const fetchAroundRoute = async () => {
+      const anchors = sampleRoutePoints(route, 8);
+      if (anchors.length === 0) return [] as WebcamItem[];
+      const lists = await Promise.all(
+        anchors.map(async (pt) => {
+          const p = new URLSearchParams({
+            lat: String(pt.lat),
+            lon: String(pt.lon),
+            radiusKm: String(WEBCAM_RADIUS_KM),
+            limit: "30",
+          });
+          const j = await fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 });
+          return j.items ?? [];
+        })
+      );
+      const merged = new globalThis.Map<string, WebcamItem>();
+      for (const row of lists.flat()) {
+        const key = webcamKeyOf(row);
+        const prev = merged.get(key);
+        if (!prev) {
+          merged.set(key, row);
+          continue;
+        }
+        const d = Math.min(prev.distance ?? Number.POSITIVE_INFINITY, row.distance ?? Number.POSITIVE_INFINITY);
+        merged.set(key, { ...prev, ...row, distance: Number.isFinite(d) ? d : prev.distance });
+      }
+      const routePts = route.length > 0 ? route : anchors.map((a) => [a.lat, a.lon] as [number, number]);
+      const withRouteDistance = Array.from(merged.values()).map((cam) => {
+        const minToRoute = routePts.reduce((best, [rlat, rlon]) => {
+          const d = haversineMeters(cam.lat, cam.lon, rlat, rlon);
+          return d < best ? d : best;
+        }, Number.POSITIVE_INFINITY);
+        return { ...cam, distance: Math.round(minToRoute) };
+      });
+      return withRouteDistance
+        .filter((cam) => (cam.distance ?? Number.POSITIVE_INFINITY) <= WEBCAM_RADIUS_KM * 1000 + 10)
+        .sort((a, b) => (a.distance ?? Number.POSITIVE_INFINITY) - (b.distance ?? Number.POSITIVE_INFINITY))
+        .slice(0, 50);
+    };
+
+    let cancelled = false;
+    const t = setTimeout(() => {
+      const task = route.length > 1 ? fetchAroundRoute() : fetchAroundCenter();
+      task
+        .then((j) => {
+          if (!cancelled) {
+            const next = j;
+            setWebcams(next);
+            setActiveWebcam((prev) => {
+              if (!prev) return null;
+              const found = next.find((w) => (w.id != null && prev.id != null ? String(w.id) === String(prev.id) : w.lat === prev.lat && w.lon === prev.lon));
+              return found ?? null;
+            });
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setWebcams([]);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [showWebcams, mapCenter.lat, mapCenter.lon, route]);
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
@@ -1067,18 +1327,134 @@ export default function MapView() {
         ))}
 
         {/* Webcam markers */}
-        {webcams.map((w) => (
+        {showWebcams && webcams.map((w) => (
           <Marker
             key={`cam-${w.id || w.lat.toFixed(5)}-${w.lon.toFixed(5)}`}
             longitude={w.lon}
             latitude={w.lat}
-            color="#0284c7"
-          />
+            anchor="bottom"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setActiveWebcam(w);
+            }}
+          >
+            <div style={webcamMarkerWrapStyle} aria-label={`Webcam marker: ${w.title || "webcam"}`}>
+              <div style={webcamMarkerFaceStyle}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M4 8.5A2.5 2.5 0 0 1 6.5 6h7A2.5 2.5 0 0 1 16 8.5v1.2l2.5-1.5A1.5 1.5 0 0 1 21 9.5v5a1.5 1.5 0 0 1-2.5 1.3L16 14.3v1.2a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 4 15.5v-7Z"
+                    fill="#ffffff"
+                  />
+                  <circle cx="10" cy="12" r="2.25" fill="#0c4a6e" />
+                </svg>
+              </div>
+              <div style={webcamMarkerTailStyle} />
+            </div>
+          </Marker>
         ))}
+        {showWebcams && activeWebcam && (
+          <Popup
+            longitude={activeWebcam.lon}
+            latitude={activeWebcam.lat}
+            anchor="top"
+            closeOnClick={false}
+            onClose={() => setActiveWebcam(null)}
+            offset={10}
+            maxWidth="260px"
+          >
+            <div style={{ minWidth: 220, color: "#0f172a", background: "#ffffff", padding: 2 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.25, color: "#020617" }}>
+                  {activeWebcam.title || "Webcam"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveWebcam(null)}
+                  aria-label="Close webcam popup"
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 999,
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#334155",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    lineHeight: "18px",
+                    textAlign: "center",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              {activeWebcam.provider ? (
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                  source: {activeWebcam.provider}
+                </div>
+              ) : null}
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", marginBottom: 8 }}>
+                {activeWebcam.city || activeWebcam.region || activeWebcam.country || `${activeWebcam.lat.toFixed(5)}, ${activeWebcam.lon.toFixed(5)}`}
+              </div>
+              {activeWebcam.preview ? (
+                <Image
+                  src={activeWebcam.preview}
+                  alt={activeWebcam.title || "webcam preview"}
+                  width={240}
+                  height={120}
+                  unoptimized
+                  style={{
+                    width: "100%",
+                    height: 120,
+                    objectFit: "cover",
+                    borderRadius: 6,
+                    border: "1px solid #e2e8f0",
+                    display: "block",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: 80,
+                    display: "grid",
+                    placeItems: "center",
+                    color: "#334155",
+                    background: "#f1f5f9",
+                    borderRadius: 6,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  no preview
+                </div>
+              )}
+              {activeWebcam.detailUrl ? (
+                <a
+                  href={activeWebcam.detailUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: "inline-block", marginTop: 8, color: "#1d4ed8", fontSize: 13, fontWeight: 700, textDecoration: "underline" }}
+                >
+                  Open stream/source
+                </a>
+              ) : null}
+            </div>
+          </Popup>
+        )}
 
         {/* Route with wind coloring and wind arrows */}
         {route.length > 0 && (
-          <RouteWindLayer route={route} winds={winds} weight={6} segmentMeters={segmentMeters} />
+          <RouteWindLayer
+            route={route}
+            winds={winds}
+            elevPts={elevPts}
+            mode={routeColorMode}
+            weight={6}
+            segmentMeters={segmentMeters}
+          />
         )}
 
         {/* Cursor highlight */}
@@ -1130,37 +1506,19 @@ export default function MapView() {
         )}
       </Map>
 
-      {/* Left top: Webcams panel */}
+      {/* Left top: Webcam toggle */}
       <div style={{ position: "absolute", left: 50, top: 12, zIndex: 1600 }}>
-        {showWebcams ? (
-          <div style={panelCardStyle}>
-            <div style={panelHeaderStyle}>
-              <span style={{ fontWeight: 600 }}>Webcams</span>
-              <button onClick={() => setShowWebcams(false)} style={closeButtonStyle} aria-label="Close webcams panel">
-                ✖
-              </button>
-            </div>
-            <WebcamsPanel
-              center={mapCenter}
-              onPick={(lat, lon) => {
-                setFocusIdx(null);
-                setWebcamFlyTarget({ lat, lon });
-              }}
-              onLoaded={setWebcams}
-            />
-          </div>
-        ) : (
-          <button onClick={() => setShowWebcams(true)} style={toggleButtonStyle}>
-            Show Webcams
-          </button>
-        )}
+        <button onClick={() => setShowWebcams((v) => !v)} style={toggleButtonStyle}>
+          {showWebcams ? "Hide Webcams" : "Show Webcams"}
+        </button>
       </div>
 
       <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1400 }}>
         <div
           style={{
             ...panelCardStyle,
-            maxHeight: "78vh",
+            width: "min(380px, calc(100vw - 24px))",
+            maxHeight: "56vh",
             overflowY: "auto",
             overflowX: "hidden",
             overscrollBehavior: "contain",
@@ -1192,6 +1550,10 @@ export default function MapView() {
             onClearEnd={clearEnd}
             onMoveStartDown={moveStartDown}
             onMoveEndUp={moveEndUp}
+            onSwapStartEnd={swapStartEnd}
+            onDownloadGpx={downloadRouteGpx}
+            canDownloadGpx={route.length > 1}
+            onClearRoute={clearRoute}
             onPickOnMap={(role, wpIdx) => beginMapPick(role, wpIdx)}
             pickMode={pickMode}
             pendingWaypointIndex={pendingWaypointIndex}
@@ -1260,7 +1622,10 @@ export default function MapView() {
           )}
         </div>
         <div style={{ fontSize: 12, color: "#1e293b" }}>
-          <WindLegend />
+          <WindLegend
+            mode={routeColorMode}
+            onToggleMode={() => setRouteColorMode((prev) => (prev === "wind" ? "slope" : "wind"))}
+          />
         </div>
       </div>
 

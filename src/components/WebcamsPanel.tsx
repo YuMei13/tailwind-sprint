@@ -98,11 +98,12 @@ export default function WebcamsPanel({
       {!loading && !err && items.length === 0 && <div style={{ color: "#6b7280", fontSize: 13 }}>No webcams nearby</div>}
 
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflow: "auto" }}>
-        {items.map((w) => {
+        {items.map((w, idx) => {
           const img = imgOf(w);
+          const labelNum = idx + 1;
           return (
             <div key={`${w.id ?? `${w.lat},${w.lon}`}`} style={{ display: "flex", gap: 8, borderBottom: "1px solid #f1f5f9", paddingBottom: 8 }}>
-              <div style={{ width: 96, height: 64, borderRadius: 6, overflow: "hidden", background: "#f1f5f9", flex: "0 0 auto" }}>
+              <div style={{ width: 96, height: 64, borderRadius: 6, overflow: "hidden", background: "#f1f5f9", flex: "0 0 auto", position: "relative" }}>
                 {img ? (
                   <Image
                     src={img}
@@ -115,9 +116,31 @@ export default function WebcamsPanel({
                 ) : (
                   <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", color: "#94a3b8", fontSize: 12 }}>no preview</div>
                 )}
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 6,
+                    top: 6,
+                    minWidth: 20,
+                    height: 20,
+                    borderRadius: 999,
+                    background: "rgba(2,132,199,0.95)",
+                    color: "#fff",
+                    border: "1px solid rgba(255,255,255,0.9)",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    lineHeight: "18px",
+                    textAlign: "center",
+                    padding: "0 6px",
+                  }}
+                  aria-hidden="true"
+                >
+                  {labelNum}
+                </div>
               </div>
               <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-                <div style={{ fontWeight: 600, lineHeight: 1.2 }}>{w.title || "Webcam"}</div>
+                <div style={{ fontWeight: 600, lineHeight: 1.2 }}>{labelNum}. {w.title || "Webcam"}</div>
                 <div style={{ color: "#6b7280", fontSize: 12, marginTop: 2 }}>
                   {w.city || w.region || w.country || "—"}
                 </div>
@@ -130,7 +153,7 @@ export default function WebcamsPanel({
                     Fly to
                   </button>
                   <a href={w.detailUrl} target="_blank" rel="noreferrer" style={{ color: "#2563eb", fontSize: 13 }}>
-                    View on Windy
+                    Watch live/source
                   </a>
                 </div>
               </div>

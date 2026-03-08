@@ -24,6 +24,10 @@ type Props = {
   onClearEnd?: () => void;
   onMoveStartDown?: () => void;
   onMoveEndUp?: () => void;
+  onSwapStartEnd?: () => void;
+  onDownloadGpx?: () => void;
+  canDownloadGpx?: boolean;
+  onClearRoute?: () => void;
   pickMode?: "none" | "start" | "end" | "waypoint";
   pendingWaypointIndex?: number | null;
   routePresets?: Array<{ id: string; name: string; description?: string }>;
@@ -156,6 +160,10 @@ export default function MapboxRoutingPanel({
   onClearEnd,
   onMoveStartDown,
   onMoveEndUp,
+  onSwapStartEnd,
+  onDownloadGpx,
+  canDownloadGpx = false,
+  onClearRoute,
   pickMode = "none",
   pendingWaypointIndex = null,
   routePresets = [],
@@ -169,11 +177,21 @@ export default function MapboxRoutingPanel({
   );
 
   useEffect(() => {
-    setStartQ(startLabelProp ?? "");
+    const next = startLabelProp ?? "";
+    setStartQ(next);
+    if (next) {
+      confirmedLabelRef.current.start = next;
+      setStartList([]);
+    }
   }, [startLabelProp]);
 
   useEffect(() => {
-    setEndQ(endLabelProp ?? "");
+    const next = endLabelProp ?? "";
+    setEndQ(next);
+    if (next) {
+      confirmedLabelRef.current.end = next;
+      setEndList([]);
+    }
   }, [endLabelProp]);
 
   useEffect(() => {
@@ -345,7 +363,7 @@ export default function MapboxRoutingPanel({
 
   const box = useMemo(
     () => ({
-      container: { position: "relative" as const, width: 360 },
+      container: { position: "relative" as const, width: "100%" },
       input: {
         width: "100%",
         padding: "6px 10px",
@@ -447,6 +465,19 @@ export default function MapboxRoutingPanel({
       )}
     </div>
   );
+
+  const handleClearRoute = useCallback(() => {
+    // Clear panel-local state first so the UI responds immediately.
+    confirmedLabelRef.current = {};
+    setStartQ("");
+    setEndQ("");
+    setStartList([]);
+    setEndList([]);
+    setWaypointQueries([]);
+    setWaypointLists([]);
+    setActiveIdx(null);
+    onClearRoute?.();
+  }, [onClearRoute]);
 
   const onKey = (
     role: Role,
@@ -831,6 +862,63 @@ export default function MapboxRoutingPanel({
           + Add Stop On Map
         </button>
       </div>
+      <button
+        type="button"
+        onClick={onSwapStartEnd}
+        disabled={!startLatLon || !endLatLon}
+        style={{
+          width: "100%",
+          padding: "8px 12px",
+          borderRadius: 8,
+          border: "1px solid #bfdbfe",
+          background: "#eff6ff",
+          color: !startLatLon || !endLatLon ? "#94a3b8" : "#1d4ed8",
+          cursor: !startLatLon || !endLatLon ? "not-allowed" : "pointer",
+          fontSize: 13,
+          fontWeight: 700,
+        }}
+      >
+        Swap Start / End
+      </button>
+      <button
+        type="button"
+        onClick={onDownloadGpx}
+        disabled={!canDownloadGpx}
+        style={{
+          width: "100%",
+          padding: "8px 12px",
+          borderRadius: 8,
+          border: "1px solid #c7d2fe",
+          background: "#eef2ff",
+          color: canDownloadGpx ? "#3730a3" : "#94a3b8",
+          cursor: canDownloadGpx ? "pointer" : "not-allowed",
+          fontSize: 13,
+          fontWeight: 700,
+        }}
+      >
+        Download GPX
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleClearRoute();
+        }}
+        style={{
+          width: "100%",
+          padding: "8px 12px",
+          borderRadius: 8,
+          border: "1px solid #fecaca",
+          background: "#fff1f2",
+          color: "#b91c1c",
+          cursor: "pointer",
+          fontSize: 13,
+          fontWeight: 700,
+        }}
+      >
+        Clear Route
+      </button>
     </div>
   );
 }
