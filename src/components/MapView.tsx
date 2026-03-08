@@ -976,6 +976,69 @@ export default function MapView() {
     // (handled by onWaypointsChange and props)
   };
 
+  const downloadRouteGpx = () => {
+    if (route.length < 2) return;
+    const esc = (s: string) =>
+      s
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&apos;");
+    const now = new Date();
+    const iso = now.toISOString();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const name = "Tailwind Sprint Route";
+
+    const wptLines: string[] = [];
+    if (startLonLat) {
+      const label = startLabel || "Start";
+      wptLines.push(`  <wpt lat="${startLonLat[1].toFixed(6)}" lon="${startLonLat[0].toFixed(6)}"><name>${esc(label)}</name></wpt>`);
+    }
+    waypointInputs.forEach((w, idx) => {
+      if (!w.lonLat) return;
+      const label = w.label || `Stop ${idx + 1}`;
+      wptLines.push(`  <wpt lat="${w.lonLat[1].toFixed(6)}" lon="${w.lonLat[0].toFixed(6)}"><name>${esc(label)}</name></wpt>`);
+    });
+    if (endLonLat) {
+      const label = endLabel || "End";
+      wptLines.push(`  <wpt lat="${endLonLat[1].toFixed(6)}" lon="${endLonLat[0].toFixed(6)}"><name>${esc(label)}</name></wpt>`);
+    }
+
+    const trkptLines = route.map(
+      ([lat, lon]) => `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"></trkpt>`
+    );
+
+    const gpx = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<gpx version="1.1" creator="Tailwind Sprint" xmlns="http://www.topografix.com/GPX/1/1">',
+      "  <metadata>",
+      `    <name>${name}</name>`,
+      `    <time>${iso}</time>`,
+      "  </metadata>",
+      ...wptLines,
+      "  <trk>",
+      `    <name>${name}</name>`,
+      "    <trkseg>",
+      ...trkptLines,
+      "    </trkseg>",
+      "  </trk>",
+      "</gpx>",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([gpx], { type: "application/gpx+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tailwind-sprint-route-${stamp}.gpx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const applyRoutePreset = async (presetId: string) => {
     const preset = TAIPEI_ROUTE_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
@@ -1488,6 +1551,8 @@ export default function MapView() {
             onMoveStartDown={moveStartDown}
             onMoveEndUp={moveEndUp}
             onSwapStartEnd={swapStartEnd}
+            onDownloadGpx={downloadRouteGpx}
+            canDownloadGpx={route.length > 1}
             onClearRoute={clearRoute}
             onPickOnMap={(role, wpIdx) => beginMapPick(role, wpIdx)}
             pickMode={pickMode}

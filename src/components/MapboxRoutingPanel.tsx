@@ -25,6 +25,8 @@ type Props = {
   onMoveStartDown?: () => void;
   onMoveEndUp?: () => void;
   onSwapStartEnd?: () => void;
+  onDownloadGpx?: () => void;
+  canDownloadGpx?: boolean;
   onClearRoute?: () => void;
   pickMode?: "none" | "start" | "end" | "waypoint";
   pendingWaypointIndex?: number | null;
@@ -159,6 +161,8 @@ export default function MapboxRoutingPanel({
   onMoveStartDown,
   onMoveEndUp,
   onSwapStartEnd,
+  onDownloadGpx,
+  canDownloadGpx = false,
   onClearRoute,
   pickMode = "none",
   pendingWaypointIndex = null,
@@ -875,6 +879,24 @@ export default function MapboxRoutingPanel({
         }}
       >
         Swap Start / End
+      </button>
+      <button
+        type="button"
+        onClick={onDownloadGpx}
+        disabled={!canDownloadGpx}
+        style={{
+          width: "100%",
+          padding: "8px 12px",
+          borderRadius: 8,
+          border: "1px solid #c7d2fe",
+          background: "#eef2ff",
+          color: canDownloadGpx ? "#3730a3" : "#94a3b8",
+          cursor: canDownloadGpx ? "pointer" : "not-allowed",
+          fontSize: 13,
+          fontWeight: 700,
+        }}
+      >
+        Download GPX
       </button>
       <button
         type="button"
