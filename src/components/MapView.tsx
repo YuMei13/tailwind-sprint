@@ -467,6 +467,7 @@ export default function MapView() {
   const [showWebcams, setShowWebcams] = useState(false);
   const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
+  const [showRoutingPanel, setShowRoutingPanel] = useState(true);
   const [routeColorMode, setRouteColorMode] = useState<"wind" | "slope">("wind");
   const [, setRouteDebug] = useState<RouteDebug | null>(null);
   const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
@@ -1514,82 +1515,94 @@ export default function MapView() {
       </div>
 
       <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1400 }}>
-        <div
-          style={{
-            ...panelCardStyle,
-            width: "min(380px, calc(100vw - 24px))",
-            maxHeight: "56vh",
-            overflowY: "auto",
-            overflowX: "hidden",
-            overscrollBehavior: "contain",
-          }}
-        >
-          <MapboxRoutingPanel
-            center={mapCenter}
-            startLatLon={startLonLat}
-            startLabel={startLabel}
-            endLatLon={endLonLat}
-            endLabel={endLabel}
-            waypoints={waypointInputs.map((w) => ({ label: w.label, latLon: w.lonLat }))}
-            onWaypointsChange={(next) => {
-              setWaypointInputs(() => {
-                const updated = next.map((w) => ({ label: w.label, lonLat: w.latLon ?? null }));
-                // Trigger route recalculation after updating waypoints
-                const waypointCoords = updated
-                  .map((w) => w.lonLat)
-                  .filter((v): v is LonLat => Array.isArray(v));
-                if (startLonLat && endLonLat) {
-                  const all: [number, number][] = [startLonLat, ...waypointCoords, endLonLat];
-                  void planRouteMulti(all);
-                }
-                return updated;
-              });
+        {showRoutingPanel ? (
+          <div
+            style={{
+              ...panelCardStyle,
+              width: "min(380px, calc(100vw - 24px))",
+              maxHeight: "52vh",
+              overflowY: "auto",
+              overflowX: "hidden",
+              overscrollBehavior: "contain",
             }}
-            onMoveWaypoint={moveWaypoint}
-            onClearStart={clearStart}
-            onClearEnd={clearEnd}
-            onMoveStartDown={moveStartDown}
-            onMoveEndUp={moveEndUp}
-            onSwapStartEnd={swapStartEnd}
-            onDownloadGpx={downloadRouteGpx}
-            canDownloadGpx={route.length > 1}
-            onClearRoute={clearRoute}
-            onPickOnMap={(role, wpIdx) => beginMapPick(role, wpIdx)}
-            pickMode={pickMode}
-            pendingWaypointIndex={pendingWaypointIndex}
-            routePresets={TAIPEI_ROUTE_PRESETS.map((p) => ({
-              id: p.id,
-              name: p.name,
-              description: p.description,
-            }))}
-            onApplyPreset={applyRoutePreset}
-            isApplyingPreset={Boolean(applyingPresetId)}
-            onPick={(role: RoutingPanelRole, lat, lon, label, wpIdx) => {
-              const v: LonLat = [lon, lat];
-              if (role === "start") {
-                setStartLonLat(v);
-                setStartLabel(label);
-                writeQuery(v, endLonLat);
-                return;
-              }
-              if (role === "end") {
-                setEndLonLat(v);
-                setEndLabel(label);
-                writeQuery(startLonLat, v);
-                return;
-              }
-              if (typeof wpIdx !== "number") return;
-              setWaypointInputs((prev) => {
-                const next = [...prev];
-                while (next.length <= wpIdx) {
-                  next.push({ label: `Stop ${next.length + 1}`, lonLat: null });
+          >
+            <div style={{ ...panelHeaderStyle, marginBottom: 8 }}>
+              <span style={{ fontWeight: 600 }}>Routing Panel</span>
+              <button onClick={() => setShowRoutingPanel(false)} style={closeButtonStyle} aria-label="Close routing panel">
+                ✖
+              </button>
+            </div>
+            <MapboxRoutingPanel
+              center={mapCenter}
+              startLatLon={startLonLat}
+              startLabel={startLabel}
+              endLatLon={endLonLat}
+              endLabel={endLabel}
+              waypoints={waypointInputs.map((w) => ({ label: w.label, latLon: w.lonLat }))}
+              onWaypointsChange={(next) => {
+                setWaypointInputs(() => {
+                  const updated = next.map((w) => ({ label: w.label, lonLat: w.latLon ?? null }));
+                  // Trigger route recalculation after updating waypoints
+                  const waypointCoords = updated
+                    .map((w) => w.lonLat)
+                    .filter((v): v is LonLat => Array.isArray(v));
+                  if (startLonLat && endLonLat) {
+                    const all: [number, number][] = [startLonLat, ...waypointCoords, endLonLat];
+                    void planRouteMulti(all);
+                  }
+                  return updated;
+                });
+              }}
+              onMoveWaypoint={moveWaypoint}
+              onClearStart={clearStart}
+              onClearEnd={clearEnd}
+              onMoveStartDown={moveStartDown}
+              onMoveEndUp={moveEndUp}
+              onSwapStartEnd={swapStartEnd}
+              onDownloadGpx={downloadRouteGpx}
+              canDownloadGpx={route.length > 1}
+              onClearRoute={clearRoute}
+              onPickOnMap={(role, wpIdx) => beginMapPick(role, wpIdx)}
+              pickMode={pickMode}
+              pendingWaypointIndex={pendingWaypointIndex}
+              routePresets={TAIPEI_ROUTE_PRESETS.map((p) => ({
+                id: p.id,
+                name: p.name,
+                description: p.description,
+              }))}
+              onApplyPreset={applyRoutePreset}
+              isApplyingPreset={Boolean(applyingPresetId)}
+              onPick={(role: RoutingPanelRole, lat, lon, label, wpIdx) => {
+                const v: LonLat = [lon, lat];
+                if (role === "start") {
+                  setStartLonLat(v);
+                  setStartLabel(label);
+                  writeQuery(v, endLonLat);
+                  return;
                 }
-                next[wpIdx] = { label, lonLat: v };
-                return next;
-              });
-            }}
-          />
-        </div>
+                if (role === "end") {
+                  setEndLonLat(v);
+                  setEndLabel(label);
+                  writeQuery(startLonLat, v);
+                  return;
+                }
+                if (typeof wpIdx !== "number") return;
+                setWaypointInputs((prev) => {
+                  const next = [...prev];
+                  while (next.length <= wpIdx) {
+                    next.push({ label: `Stop ${next.length + 1}`, lonLat: null });
+                  }
+                  next[wpIdx] = { label, lonLat: v };
+                  return next;
+                });
+              }}
+            />
+          </div>
+        ) : (
+          <button onClick={() => setShowRoutingPanel(true)} style={toggleButtonStyle}>
+            Show Routing
+          </button>
+        )}
       </div>
 
       {/* Bottom-right: Segments + Wind legend */}
