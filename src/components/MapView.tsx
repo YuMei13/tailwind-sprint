@@ -9,7 +9,6 @@ import Image from "next/image";
 import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWindLayer";
 import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
-import SegmentationControls from "@/components/SegmentationControls";
 import MapboxRoutingPanel, { type Role as RoutingPanelRole } from "@/components/MapboxRoutingPanel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -438,7 +437,7 @@ export default function MapView() {
   const [route, setRoute] = useState<LineLatLng>([]);
   const [winds, setWinds] = useState<WindPoint[]>([]);
   const [elevPts, setElevPts] = useState<ElevPoint[]>([]);
-  const [segmentMeters, setSegmentMeters] = useState<number>(500);
+  const [segmentMeters] = useState<number>(300);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({
     lat: 25.05,
     lon: 121.52,
@@ -465,7 +464,6 @@ export default function MapView() {
 
   // Show/hide panels
   const [showWebcams, setShowWebcams] = useState(false);
-  const [showSegments, setShowSegments] = useState(true);
   const [showElevation, setShowElevation] = useState(true);
   const [showRoutingPanel, setShowRoutingPanel] = useState(true);
   const [showDataPanel, setShowDataPanel] = useState(true);
@@ -1553,7 +1551,7 @@ export default function MapView() {
             </button>
           )}
           <button onClick={() => setShowDataPanel((v) => !v)} style={toggleButtonStyle}>
-            {showDataPanel ? "Hide Data" : "Data"}
+            {showDataPanel ? "Hide Legend" : "Legend"}
           </button>
           <button onClick={() => setShowRoutingPanel((v) => !v)} style={toggleButtonStyle}>
             {showRoutingPanel ? "Hide Route" : "Route"}
@@ -1680,23 +1678,6 @@ export default function MapView() {
             gap: 8,
           }}
         >
-          <div style={{ width: "100%" }}>
-            {showSegments ? (
-              <div style={{ ...panelCardStyle, width: "100%" }}>
-                <div style={panelHeaderStyle}>
-                  <span style={{ fontWeight: 600 }}>Wind Sampling Segments</span>
-                  <button onClick={() => setShowSegments(false)} style={closeButtonStyle} aria-label="Close segments panel">
-                    ✖
-                  </button>
-                </div>
-                <SegmentationControls value={segmentMeters} onChange={setSegmentMeters} />
-              </div>
-            ) : (
-              <button onClick={() => setShowSegments(true)} style={toggleButtonStyle}>
-                Show Segments
-              </button>
-            )}
-          </div>
           <div style={{ fontSize: 12, color: "#1e293b", width: "100%" }}>
             <WindLegend
               mode={routeColorMode}
