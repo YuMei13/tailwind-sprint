@@ -1,7 +1,7 @@
 // src/components/MapView.tsx
 "use client";
 
-import Map, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
+import MapGL, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MapMouseEvent } from "mapbox-gl";
@@ -39,6 +39,7 @@ type RoutePreset = {
   name: string;
   description: string;
   stops: PresetStop[];
+  gpxPath?: string;
 };
 type RouteDebug = {
   source: RouteSource;
@@ -53,6 +54,7 @@ type RouteDebug = {
   message?: string;
 };
 const WEBCAM_RADIUS_KM = 0.5;
+const ROUTE_CACHE_PREFIX = "ts-route-cache:v4:";
 
 const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
@@ -150,7 +152,8 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "bike100-rulai",
     name: "自行車－如來神掌線",
-    description: "來源：Pathfinder 汝來神掌.gpx（依上傳 GPX 軌跡抽樣檢查點）。",
+    description: "來源：上傳 GPX 檔 瘋神掌100K順騎.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/rulai-100k.gpx",
     stops: [
       { name: "起點", lonLat: [121.53406, 25.09764] },
       { name: "檢查點 1", lonLat: [121.56411, 25.16252] },
@@ -166,7 +169,8 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "rwgps-49826274",
     name: "環大臺北自行車挑戰（RWGPS）",
-    description: "來源：Ride with GPS 路線 49826274。",
+    description: "來源：上傳 GPX 檔 環大台北 160K（板橋→貢寮→淡水）.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/rwgps-49826274.gpx",
     stops: [
       { name: "起點（板橋）", lonLat: [121.46942, 25.00955] },
       { name: "深坑", lonLat: [121.69745, 25.01866] },
@@ -180,7 +184,8 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "rwgps-38179892",
     name: "環小台北自行車道（RWGPS）",
-    description: "來源：Ride with GPS 路線 38179892。",
+    description: "來源：上傳 GPX 檔 環小台北(深南路).gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/rwgps-38179892.gpx",
     stops: [
       { name: "起點（文山）", lonLat: [121.53943, 24.98836] },
       { name: "新店溪右岸自行車道", lonLat: [121.53062, 25.01035] },
@@ -191,7 +196,29 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
       { name: "終點（文山）", lonLat: [121.53844, 24.98843] },
     ],
   },
+  {
+    id: "feng-east-3t-550k",
+    name: "瘋系列－東三塔 550K",
+    description: "來源：上傳 GPX 檔 瘋系列-東三塔550k.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/feng-east-3t-550k.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.53776, 25.28993] },
+      { name: "終點", lonLat: [120.84815, 21.9111] },
+    ],
+  },
 ];
+
+function parseGpxTrackPoints(gpxText: string): LonLat[] {
+  const doc = new DOMParser().parseFromString(gpxText, "application/xml");
+  const nodes = Array.from(doc.getElementsByTagName("trkpt"));
+  const out: LonLat[] = [];
+  for (const node of nodes) {
+    const lat = Number(node.getAttribute("lat"));
+    const lon = Number(node.getAttribute("lon"));
+    if (isValidCoordinate(lat, lon)) out.push([lon, lat]);
+  }
+  return out;
+}
 
 // Validate coordinates
 function isValidCoordinate(lat: number, lon: number): boolean {
@@ -472,6 +499,10 @@ export default function MapView() {
   const [, setRouteDebug] = useState<RouteDebug | null>(null);
   const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
   const latestRouteReqRef = useRef<number>(0);
+  const suppressAutoPlanRef = useRef(false);
+  const directGpxModeRef = useRef(false);
+  const routeCacheRef = useRef<Map<string, LonLat[]>>(new Map());
+  const pendingPresetCacheRef = useRef<string | null>(null);
 
   const mapRef = useRef<MapRef | null>(null);
   const isPhone = viewportWidth < 768;
@@ -491,6 +522,41 @@ export default function MapView() {
       setShowDataPanel(true);
     }
   }, [isPhone]);
+
+  const loadCachedPresetRoute = (presetId: string): LonLat[] | null => {
+    const mem = routeCacheRef.current.get(presetId);
+    if (mem && mem.length >= 2) return mem;
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(`${ROUTE_CACHE_PREFIX}${presetId}`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      const coords: LonLat[] = [];
+      for (const item of parsed) {
+        if (!Array.isArray(item) || item.length < 2) continue;
+        const lon = Number(item[0]);
+        const lat = Number(item[1]);
+        if (isValidCoordinate(lat, lon)) coords.push([lon, lat]);
+      }
+      if (coords.length < 2) return null;
+      routeCacheRef.current.set(presetId, coords);
+      return coords;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveCachedPresetRoute = (presetId: string, coords: LonLat[]) => {
+    if (!presetId || coords.length < 2) return;
+    routeCacheRef.current.set(presetId, coords);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(`${ROUTE_CACHE_PREFIX}${presetId}`, JSON.stringify(coords));
+    } catch {
+      // Ignore quota errors.
+    }
+  };
 
   const focusPt = useMemo(() => {
     if (focusIdx == null || !elevPts[focusIdx]) return null;
@@ -607,6 +673,11 @@ export default function MapView() {
     const line: [number, number][] = merged.map(([lon, lat]) => [lat, lon]);
     if (requestId !== latestRouteReqRef.current) return;
     setRoute(line);
+    const pendingPresetId = pendingPresetCacheRef.current;
+    if (pendingPresetId) {
+      saveCachedPresetRoute(pendingPresetId, merged);
+      pendingPresetCacheRef.current = null;
+    }
 
     // Wind: sample route and retry with fewer points if response has no valid wind vectors.
     const buildSample = (targetCount: number): [number, number][] => {
@@ -787,6 +858,7 @@ export default function MapView() {
   };
 
   const planRouteMulti = async (points: [number, number][]) => {
+    if (directGpxModeRef.current) return;
     try {
       if (points.length < 2) return;
       const requestId = ++latestRouteReqRef.current;
@@ -882,6 +954,7 @@ export default function MapView() {
   };
 
   const moveWaypoint = (fromIndex: number, toIndex: number) => {
+    directGpxModeRef.current = false;
     setWaypointInputs((prev) => {
       if (fromIndex < 0 || fromIndex >= prev.length) return prev;
       if (toIndex < 0 || toIndex >= prev.length) return prev;
@@ -894,6 +967,7 @@ export default function MapView() {
   };
 
   const beginMapPick = (role: "start" | "end" | "waypoint", wpIdx?: number) => {
+    directGpxModeRef.current = false;
     if (role === "waypoint") {
       setPendingWaypointIndex(typeof wpIdx === "number" ? wpIdx : null);
       setPickMode("waypoint");
@@ -904,6 +978,7 @@ export default function MapView() {
   };
 
   const clearStart = () => {
+    directGpxModeRef.current = false;
     setStartLonLat(null);
     setStartLabel("");
     writeQuery(null, endLonLat);
@@ -912,6 +987,7 @@ export default function MapView() {
   };
 
   const clearEnd = () => {
+    directGpxModeRef.current = false;
     setEndLonLat(null);
     setEndLabel("");
     writeQuery(startLonLat, null);
@@ -920,6 +996,7 @@ export default function MapView() {
   };
 
   const moveStartDown = () => {
+    directGpxModeRef.current = false;
     if (!startLonLat || waypointInputs.length === 0) return;
     const first = waypointInputs[0];
     if (!first.lonLat) return;
@@ -936,6 +1013,7 @@ export default function MapView() {
   };
 
   const moveEndUp = () => {
+    directGpxModeRef.current = false;
     if (!endLonLat || waypointInputs.length === 0) return;
     const lastIdx = waypointInputs.length - 1;
     const last = waypointInputs[lastIdx];
@@ -953,6 +1031,7 @@ export default function MapView() {
   };
 
   const swapStartEnd = () => {
+    directGpxModeRef.current = false;
     if (!startLonLat || !endLonLat) return;
     const nextStart = endLonLat;
     const nextEnd = startLonLat;
@@ -971,6 +1050,7 @@ export default function MapView() {
   };
 
   const clearRoute = () => {
+    directGpxModeRef.current = false;
     // Invalidate any in-flight routing response so it cannot repopulate cleared state.
     latestRouteReqRef.current += 1;
     setStartLonLat(null);
@@ -1061,7 +1141,90 @@ export default function MapView() {
     const preset = TAIPEI_ROUTE_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
     setApplyingPresetId(presetId);
+    pendingPresetCacheRef.current = null;
     try {
+      const fitBoundsToRoute = (coords: LonLat[]) => {
+        const map = mapRef.current?.getMap();
+        if (!map || coords.length < 2) return;
+        const lons = coords.map((p) => p[0]);
+        const lats = coords.map((p) => p[1]);
+        const minLon = Math.min(...lons);
+        const maxLon = Math.max(...lons);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        if (Number.isFinite(minLon) && Number.isFinite(maxLon) && Number.isFinite(minLat) && Number.isFinite(maxLat)) {
+          map.fitBounds(
+            [
+              [minLon, minLat],
+              [maxLon, maxLat],
+            ],
+            { padding: 80, duration: 900, maxZoom: 14 }
+          );
+        }
+      };
+
+      const cachedRoute = loadCachedPresetRoute(preset.id);
+      if (cachedRoute && cachedRoute.length >= 2) {
+        directGpxModeRef.current = true;
+        pendingPresetCacheRef.current = null;
+        const [startLon, startLat] = cachedRoute[0];
+        const [endLon, endLat] = cachedRoute[cachedRoute.length - 1];
+        const hasStops = preset.stops.length >= 2 && !preset.gpxPath;
+        const startName = hasStops ? preset.stops[0].name : "起點";
+        const endName = hasStops ? preset.stops[preset.stops.length - 1].name : "終點";
+        suppressAutoPlanRef.current = true;
+        setStartLonLat([startLon, startLat]);
+        setEndLonLat([endLon, endLat]);
+        setStartLabel(startName);
+        setEndLabel(endName);
+        setWaypointInputs(
+          hasStops
+            ? preset.stops.slice(1, -1).map((s) => ({ label: s.name, lonLat: s.lonLat }))
+            : []
+        );
+        setPickMode("none");
+        setPendingWaypointIndex(null);
+        setMapCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
+        writeQuery([startLon, startLat], [endLon, endLat]);
+
+        const requestId = ++latestRouteReqRef.current;
+        await applyRouteFromLonLat(
+          cachedRoute,
+          { source: "planned", incomingCount: cachedRoute.length },
+          requestId
+        );
+        fitBoundsToRoute(cachedRoute);
+        return;
+      }
+
+      if (preset.gpxPath) {
+        directGpxModeRef.current = true;
+        const r = await fetch(preset.gpxPath, { cache: "no-store" });
+        if (!r.ok) throw new Error(`Failed to load GPX (${r.status})`);
+        const gpxTrack = parseGpxTrackPoints(await r.text());
+        if (gpxTrack.length < 2) throw new Error("GPX track has insufficient points.");
+
+        const [startLon, startLat] = gpxTrack[0];
+        const [endLon, endLat] = gpxTrack[gpxTrack.length - 1];
+        suppressAutoPlanRef.current = true;
+        setStartLonLat([startLon, startLat]);
+        setEndLonLat([endLon, endLat]);
+        setStartLabel("起點");
+        setEndLabel("終點");
+        setWaypointInputs([]);
+        setPickMode("none");
+        setPendingWaypointIndex(null);
+        setMapCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
+        writeQuery([startLon, startLat], [endLon, endLat]);
+
+        const requestId = ++latestRouteReqRef.current;
+        pendingPresetCacheRef.current = preset.id;
+        await applyRouteFromLonLat(gpxTrack, { source: "planned", incomingCount: gpxTrack.length }, requestId);
+        fitBoundsToRoute(gpxTrack);
+        return;
+      }
+      directGpxModeRef.current = false;
+
       const points = preset.stops.map((s) => ({
         name: s.name,
         lat: s.lonLat[1],
@@ -1112,6 +1275,7 @@ export default function MapView() {
         }
       }
       writeQuery([start.lon, start.lat], [end.lon, end.lat]);
+      pendingPresetCacheRef.current = preset.id;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load preset route";
       setRouteDebug((prev) => ({
@@ -1133,6 +1297,11 @@ export default function MapView() {
 
   // Plan route when start/end change
   useEffect(() => {
+    if (directGpxModeRef.current) return;
+    if (suppressAutoPlanRef.current) {
+      suppressAutoPlanRef.current = false;
+      return;
+    }
     const waypointCoords = waypointInputs
       .map((w) => w.lonLat)
       .filter((v): v is LonLat => Array.isArray(v));
@@ -1257,7 +1426,7 @@ export default function MapView() {
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
-      <Map
+      <MapGL
         ref={mapRef}
         initialViewState={{
           longitude: mapCenter.lon,
@@ -1522,7 +1691,7 @@ export default function MapView() {
             />
           </Source>
         )}
-      </Map>
+      </MapGL>
 
       {/* Webcam toggle */}
       {!isPhone && (
@@ -1595,6 +1764,7 @@ export default function MapView() {
               endLabel={endLabel}
               waypoints={waypointInputs.map((w) => ({ label: w.label, latLon: w.lonLat }))}
               onWaypointsChange={(next) => {
+                directGpxModeRef.current = false;
                 setWaypointInputs(() => {
                   const updated = next.map((w) => ({ label: w.label, lonLat: w.latLon ?? null }));
                   const waypointCoords = updated
@@ -1627,6 +1797,7 @@ export default function MapView() {
               onApplyPreset={applyRoutePreset}
               isApplyingPreset={Boolean(applyingPresetId)}
               onPick={(role: RoutingPanelRole, lat, lon, label, wpIdx) => {
+                directGpxModeRef.current = false;
                 const v: LonLat = [lon, lat];
                 if (role === "start") {
                   setStartLonLat(v);
