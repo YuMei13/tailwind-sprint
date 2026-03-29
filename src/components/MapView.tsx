@@ -1673,7 +1673,7 @@ export default function MapView() {
           zoom: zoom,
         }}
         style={{ width: "100%", height: "100%" }}
-        mapStyle="mapbox://styles/mapbox/outdoors-v12"
+        mapStyle="mapbox://styles/mapbox/light-v11"
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
         onMove={(evt) => {
           setMapCenter({ lat: evt.viewState.latitude, lon: evt.viewState.longitude });
