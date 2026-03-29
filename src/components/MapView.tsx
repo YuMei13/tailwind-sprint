@@ -634,6 +634,23 @@ export default function MapView() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("geolocation" in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+        setMapCenter({ lat: latitude, lon: longitude });
+        setZoom((z) => (z < 12 ? 12 : z));
+      },
+      () => {
+        // Ignore location errors and keep default center.
+      },
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 120000 }
+    );
+  }, []);
+
+  useEffect(() => {
     if (isPhone) {
       setShowDataPanel(false);
     } else {
