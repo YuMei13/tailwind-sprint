@@ -123,8 +123,8 @@ export default function WindLegend({ mode = "wind", onToggleMode, windAngleRatio
             }}
           >
             <svg width="20" height="12" viewBox="0 0 24 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <line x1="2" y1="8" x2="18" y2="8" stroke="#b45309" strokeWidth={speedStrokeMap[i] ?? 2} strokeLinecap="round" />
-              <polygon points="16,4 24,8 16,12" fill="#b45309" />
+              <line x1="2" y1="8" x2="18" y2="8" stroke="#C4AF27" strokeWidth={speedStrokeMap[i] ?? 2} strokeLinecap="round" />
+              <polygon points="16,4 24,8 16,12" fill="#C4AF27" />
             </svg>
           </span>
           <span>{b.label}</span>

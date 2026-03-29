@@ -7,7 +7,7 @@ import { windToColor } from "@/lib/wind";
  * @param speedMs Wind speed (m/s)
  */
 export function getArrowIcon(dirDeg: number, speedMs: number): string {
-  const color = "#b45309";
+  const color = "#C4AF27";
   const strokeWidth =
     Number.isFinite(speedMs)
       ? speedMs < 3
