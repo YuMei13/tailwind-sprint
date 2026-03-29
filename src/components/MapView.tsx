@@ -1,7 +1,7 @@
 // src/components/MapView.tsx
 "use client";
 
-import Map, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
+import MapGL, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MapMouseEvent } from "mapbox-gl";
@@ -39,6 +39,7 @@ type RoutePreset = {
   name: string;
   description: string;
   stops: PresetStop[];
+  gpxPath?: string;
 };
 type RouteDebug = {
   source: RouteSource;
@@ -53,6 +54,8 @@ type RouteDebug = {
   message?: string;
 };
 const WEBCAM_RADIUS_KM = 0.5;
+const ROUTE_CACHE_PREFIX = "ts-route-cache:v5:";
+const ROUTE_API_CACHE_PREFIX = "ts-route-api-cache:v1:";
 
 const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
@@ -81,7 +84,8 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "bike100-zhongshe",
     name: "台北士林｜中社路",
-    description: "參考 bike100 台北路線：士林中社路。",
+    description: "來源：上傳 GPX 檔 中社路.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/zhongshe.gpx",
     stops: [
       { name: "國立故宮博物院", lonLat: [121.549134, 25.102039] },
       { name: "中社路一段", lonLat: [121.560807, 25.106856] },
@@ -150,7 +154,8 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "bike100-rulai",
     name: "自行車－如來神掌線",
-    description: "來源：Pathfinder 汝來神掌.gpx（依上傳 GPX 軌跡抽樣檢查點）。",
+    description: "來源：上傳 GPX 檔 瘋神掌100K順騎.gpx。",
+    gpxPath: "/rulai-100k.gpx",
     stops: [
       { name: "起點", lonLat: [121.53406, 25.09764] },
       { name: "檢查點 1", lonLat: [121.56411, 25.16252] },
@@ -166,7 +171,8 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "rwgps-49826274",
     name: "環大臺北自行車挑戰（RWGPS）",
-    description: "來源：Ride with GPS 路線 49826274。",
+    description: "來源：上傳 GPX 檔 環大台北200K.gpx。",
+    gpxPath: "/rwgps-49826274.gpx",
     stops: [
       { name: "起點（板橋）", lonLat: [121.46942, 25.00955] },
       { name: "深坑", lonLat: [121.69745, 25.01866] },
@@ -180,7 +186,8 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "rwgps-38179892",
     name: "環小台北自行車道（RWGPS）",
-    description: "來源：Ride with GPS 路線 38179892。",
+    description: "來源：上傳 GPX 檔 環小台北(深南路).gpx。",
+    gpxPath: "/rwgps-38179892.gpx",
     stops: [
       { name: "起點（文山）", lonLat: [121.53943, 24.98836] },
       { name: "新店溪右岸自行車道", lonLat: [121.53062, 25.01035] },
@@ -191,7 +198,59 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
       { name: "終點（文山）", lonLat: [121.53844, 24.98843] },
     ],
   },
+  {
+    id: "feng-east-3t-550k",
+    name: "瘋系列－東三塔 550K",
+    description: "來源：上傳 GPX 檔 瘋系列-東三塔550k.gpx。",
+    gpxPath: "/feng-east-3t-550k.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.53776, 25.28993] },
+      { name: "終點", lonLat: [120.84815, 21.9111] },
+    ],
+  },
+  {
+    id: "taipei-central-loop",
+    name: "環中台北",
+    description: "來源：上傳 GPX 檔 環中台北.gpx。",
+    gpxPath: "/taipei-central-loop.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.487379, 25.049422] },
+      { name: "終點", lonLat: [121.489951, 25.048421] },
+    ],
+  },
+  {
+    id: "fengguizui",
+    name: "風櫃嘴",
+    description: "來源：上傳 GPX 檔 風櫃嘴_FengGuiZui.gpx。",
+    gpxPath: "/fengguizui.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.55085, 25.10048] },
+      { name: "終點", lonLat: [121.60005, 25.1341] },
+    ],
+  },
+  {
+    id: "yangjin-3p",
+    name: "陽金3P",
+    description: "來源：上傳 GPX 檔 陽金3P.gpx。",
+    gpxPath: "/yangjin-3p.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.53575, 25.10858] },
+      { name: "終點", lonLat: [121.563, 25.1675] },
+    ],
+  },
 ];
+
+function parseGpxTrackPoints(gpxText: string): LonLat[] {
+  const doc = new DOMParser().parseFromString(gpxText, "application/xml");
+  const nodes = Array.from(doc.getElementsByTagName("trkpt"));
+  const out: LonLat[] = [];
+  for (const node of nodes) {
+    const lat = Number(node.getAttribute("lat"));
+    const lon = Number(node.getAttribute("lon"));
+    if (isValidCoordinate(lat, lon)) out.push([lon, lat]);
+  }
+  return out;
+}
 
 // Validate coordinates
 function isValidCoordinate(lat: number, lon: number): boolean {
@@ -215,6 +274,91 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function normalizeDeg(v: number) {
+  const x = v % 360;
+  return x < 0 ? x + 360 : x;
+}
+
+function bearingDeg(from: LatLng, to: LatLng): number {
+  const lat1 = (from[0] * Math.PI) / 180;
+  const lat2 = (to[0] * Math.PI) / 180;
+  const dLon = ((to[1] - from[1]) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return normalizeDeg((Math.atan2(y, x) * 180) / Math.PI);
+}
+
+function smallestAngleDiffDeg(a: number, b: number): number {
+  const d = Math.abs(normalizeDeg(a) - normalizeDeg(b));
+  return d > 180 ? 360 - d : d;
+}
+
+function cumulativeDistancesLatLng(route: LatLng[]): number[] {
+  const n = route.length;
+  const cum: number[] = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const a = route[i - 1];
+    const b = route[i];
+    cum[i] = cum[i - 1] + haversineMeters(a[0], a[1], b[0], b[1]);
+  }
+  return cum;
+}
+
+function sliceBetweenLatLng(route: LatLng[], cum: number[], d0: number, d1: number): LatLng[] {
+  const n = route.length;
+  if (n < 2 || d1 <= d0) return [];
+  const out: LatLng[] = [];
+  let started = false;
+
+  for (let i = 1; i < n; i++) {
+    const a = route[i - 1];
+    const b = route[i];
+    const da = cum[i - 1];
+    const db = cum[i];
+    const segLen = db - da;
+    if (segLen <= 0) continue;
+
+    if (db < d0) continue;
+    if (da > d1) break;
+
+    if (!started) {
+      if (d0 <= da) {
+        out.push(a);
+      } else {
+        const t0 = (d0 - da) / segLen;
+        out.push([a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0]);
+      }
+      started = true;
+    }
+
+    if (db >= d1) {
+      const t1 = (d1 - da) / segLen;
+      out.push([a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1]);
+      break;
+    } else {
+      out.push(b);
+    }
+  }
+
+  return out.length >= 2 ? out : [];
+}
+
+function nearestWindDirDeg(winds: WindPoint[], p: LatLng): number | undefined {
+  let bestD2 = Number.POSITIVE_INFINITY;
+  let best: number | undefined = undefined;
+  for (const w of winds) {
+    if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon) || !Number.isFinite(w.dirDeg)) continue;
+    const dx = w.lat - p[0];
+    const dy = w.lon - p[1];
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = w.dirDeg as number;
+    }
+  }
+  return best;
 }
 
 function webcamKeyOf(w: WebcamItem): string {
@@ -472,6 +616,11 @@ export default function MapView() {
   const [, setRouteDebug] = useState<RouteDebug | null>(null);
   const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
   const latestRouteReqRef = useRef<number>(0);
+  const suppressAutoPlanRef = useRef(false);
+  const directGpxModeRef = useRef(false);
+  const routeCacheRef = useRef<Map<string, LonLat[]>>(new Map());
+  const pendingPresetCacheRef = useRef<string | null>(null);
+  const routeApiCacheRef = useRef<Map<string, LonLat[]>>(new Map());
 
   const mapRef = useRef<MapRef | null>(null);
   const isPhone = viewportWidth < 768;
@@ -485,6 +634,23 @@ export default function MapView() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("geolocation" in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+        setMapCenter({ lat: latitude, lon: longitude });
+        setZoom((z) => (z < 12 ? 12 : z));
+      },
+      () => {
+        // Ignore location errors and keep default center.
+      },
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 120000 }
+    );
+  }, []);
+
+  useEffect(() => {
     if (isPhone) {
       setShowDataPanel(false);
     } else {
@@ -492,11 +658,152 @@ export default function MapView() {
     }
   }, [isPhone]);
 
+  const loadCachedPresetRoute = (presetId: string): LonLat[] | null => {
+    const mem = routeCacheRef.current.get(presetId);
+    if (mem && mem.length >= 2) return mem;
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(`${ROUTE_CACHE_PREFIX}${presetId}`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      const coords: LonLat[] = [];
+      for (const item of parsed) {
+        if (!Array.isArray(item) || item.length < 2) continue;
+        const lon = Number(item[0]);
+        const lat = Number(item[1]);
+        if (isValidCoordinate(lat, lon)) coords.push([lon, lat]);
+      }
+      if (coords.length < 2) return null;
+      routeCacheRef.current.set(presetId, coords);
+      return coords;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveCachedPresetRoute = (presetId: string, coords: LonLat[]) => {
+    if (!presetId || coords.length < 2) return;
+    routeCacheRef.current.set(presetId, coords);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(`${ROUTE_CACHE_PREFIX}${presetId}`, JSON.stringify(coords));
+    } catch {
+      // Ignore quota errors.
+    }
+  };
+
+  const normalizeCoord = (value: number) => Math.round(value * 1e5) / 1e5;
+
+  const buildRouteApiCacheKey = (coords: LonLat[], profile: string) => {
+    const compact = coords.map(([lon, lat]) => [normalizeCoord(lon), normalizeCoord(lat)]);
+    return `${ROUTE_API_CACHE_PREFIX}${profile}:${JSON.stringify(compact)}`;
+  };
+
+  const loadRouteApiCache = (key: string): LonLat[] | null => {
+    const mem = routeApiCacheRef.current.get(key);
+    if (mem && mem.length >= 2) return mem;
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      const coords: LonLat[] = [];
+      for (const item of parsed) {
+        if (!Array.isArray(item) || item.length < 2) continue;
+        const lon = Number(item[0]);
+        const lat = Number(item[1]);
+        if (isValidCoordinate(lat, lon)) coords.push([lon, lat]);
+      }
+      if (coords.length < 2) return null;
+      routeApiCacheRef.current.set(key, coords);
+      return coords;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveRouteApiCache = (key: string, coords: LonLat[]) => {
+    if (coords.length < 2) return;
+    routeApiCacheRef.current.set(key, coords);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(key, JSON.stringify(coords));
+    } catch {
+      // Ignore quota errors.
+    }
+  };
+
   const focusPt = useMemo(() => {
     if (focusIdx == null || !elevPts[focusIdx]) return null;
     const p = elevPts[focusIdx];
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
+
+  const windAngleRatio = useMemo(() => {
+    if (!Array.isArray(route) || route.length < 2) return null;
+    if (!Array.isArray(winds) || winds.length === 0) return null;
+    const cum = cumulativeDistancesLatLng(route);
+    const total = cum[cum.length - 1];
+    if (!Number.isFinite(total) || total <= 0) return null;
+    const segLen = Math.max(50, segmentMeters);
+    const segCount = Math.max(1, Math.ceil(total / segLen));
+    let same = 0;
+    let cross = 0;
+    let opposite = 0;
+    let counted = 0;
+    for (let k = 0; k < segCount; k++) {
+      const d0 = k * segLen;
+      const d1 = Math.min(total, (k + 1) * segLen);
+      const pts = sliceBetweenLatLng(route, cum, d0, d1);
+      if (pts.length < 2) continue;
+      const midPt = pts[Math.floor(pts.length / 2)] ?? pts[0];
+      const windDir = nearestWindDirDeg(winds, midPt);
+      if (typeof windDir !== "number") continue;
+      const routeDir = bearingDeg(pts[0], pts[pts.length - 1]);
+      const angle = smallestAngleDiffDeg(routeDir, windDir);
+      if (angle < 45) same += 1;
+      else if (angle < 135) cross += 1;
+      else opposite += 1;
+      counted += 1;
+    }
+
+    if (counted === 0) {
+      let fallbackSame = 0;
+      let fallbackCross = 0;
+      let fallbackOpposite = 0;
+      let fallbackCount = 0;
+      for (const w of winds) {
+        if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon) || !Number.isFinite(w.dirDeg)) continue;
+        let bestIdx = -1;
+        let bestD2 = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < route.length; i++) {
+          const dx = route[i][0] - w.lat;
+          const dy = route[i][1] - w.lon;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < bestD2) {
+            bestD2 = d2;
+            bestIdx = i;
+          }
+        }
+        if (bestIdx < 0) continue;
+        const prev = route[Math.max(0, bestIdx - 1)];
+        const next = route[Math.min(route.length - 1, bestIdx + 1)];
+        if (!prev || !next || (prev[0] === next[0] && prev[1] === next[1])) continue;
+        const routeDir = bearingDeg(prev, next);
+        const angle = smallestAngleDiffDeg(routeDir, w.dirDeg as number);
+        if (angle < 45) fallbackSame += 1;
+        else if (angle < 135) fallbackCross += 1;
+        else fallbackOpposite += 1;
+        fallbackCount += 1;
+      }
+      if (fallbackCount === 0) return null;
+      return { same: fallbackSame, cross: fallbackCross, opposite: fallbackOpposite, total: fallbackCount };
+    }
+
+    return { same, cross, opposite, total: counted };
+  }, [route, winds, segmentMeters]);
 
   // === URL Read/Write ===
   const router = useRouter();
@@ -542,31 +849,43 @@ export default function MapView() {
   };
 
   async function fetchLegCoords(a: LonLat, b: LonLat): Promise<LonLat[]> {
+    const profile = "cycling";
+    const cacheKey = buildRouteApiCacheKey([a, b], profile);
+    const cached = loadRouteApiCache(cacheKey);
+    if (cached) return cached;
     const r = await fetchJSON<{
       geometry: { type: string; coordinates: [number, number][] };
     }>("/api/mapbox-route", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ coordinates: [a, b], profile: "cycling" }),
+        body: JSON.stringify({ coordinates: [a, b], profile }),
         timeoutMs: 45000,
       });
-    return (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
+    const coords = (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
       isValidCoordinate(lat, lon)
     );
+    saveRouteApiCache(cacheKey, coords);
+    return coords;
   }
 
   async function fetchRouteForAllPoints(points: LonLat[]): Promise<LonLat[]> {
+    const profile = "cycling";
+    const cacheKey = buildRouteApiCacheKey(points, profile);
+    const cached = loadRouteApiCache(cacheKey);
+    if (cached) return cached;
     const r = await fetchJSON<{
       geometry: { type: string; coordinates: [number, number][] };
     }>("/api/mapbox-route", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: points, profile: "cycling" }),
+      body: JSON.stringify({ coordinates: points, profile }),
       timeoutMs: 45000,
     });
-    return (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
+    const coords = (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
       isValidCoordinate(lat, lon)
     );
+    saveRouteApiCache(cacheKey, coords);
+    return coords;
   }
 
   function sameLonLat(a: LonLat, b: LonLat) {
@@ -607,6 +926,11 @@ export default function MapView() {
     const line: [number, number][] = merged.map(([lon, lat]) => [lat, lon]);
     if (requestId !== latestRouteReqRef.current) return;
     setRoute(line);
+    const pendingPresetId = pendingPresetCacheRef.current;
+    if (pendingPresetId) {
+      saveCachedPresetRoute(pendingPresetId, merged);
+      pendingPresetCacheRef.current = null;
+    }
 
     // Wind: sample route and retry with fewer points if response has no valid wind vectors.
     const buildSample = (targetCount: number): [number, number][] => {
@@ -787,6 +1111,7 @@ export default function MapView() {
   };
 
   const planRouteMulti = async (points: [number, number][]) => {
+    if (directGpxModeRef.current) return;
     try {
       if (points.length < 2) return;
       const requestId = ++latestRouteReqRef.current;
@@ -882,6 +1207,7 @@ export default function MapView() {
   };
 
   const moveWaypoint = (fromIndex: number, toIndex: number) => {
+    directGpxModeRef.current = false;
     setWaypointInputs((prev) => {
       if (fromIndex < 0 || fromIndex >= prev.length) return prev;
       if (toIndex < 0 || toIndex >= prev.length) return prev;
@@ -894,6 +1220,7 @@ export default function MapView() {
   };
 
   const beginMapPick = (role: "start" | "end" | "waypoint", wpIdx?: number) => {
+    directGpxModeRef.current = false;
     if (role === "waypoint") {
       setPendingWaypointIndex(typeof wpIdx === "number" ? wpIdx : null);
       setPickMode("waypoint");
@@ -904,6 +1231,7 @@ export default function MapView() {
   };
 
   const clearStart = () => {
+    directGpxModeRef.current = false;
     setStartLonLat(null);
     setStartLabel("");
     writeQuery(null, endLonLat);
@@ -912,6 +1240,7 @@ export default function MapView() {
   };
 
   const clearEnd = () => {
+    directGpxModeRef.current = false;
     setEndLonLat(null);
     setEndLabel("");
     writeQuery(startLonLat, null);
@@ -920,6 +1249,7 @@ export default function MapView() {
   };
 
   const moveStartDown = () => {
+    directGpxModeRef.current = false;
     if (!startLonLat || waypointInputs.length === 0) return;
     const first = waypointInputs[0];
     if (!first.lonLat) return;
@@ -936,6 +1266,7 @@ export default function MapView() {
   };
 
   const moveEndUp = () => {
+    directGpxModeRef.current = false;
     if (!endLonLat || waypointInputs.length === 0) return;
     const lastIdx = waypointInputs.length - 1;
     const last = waypointInputs[lastIdx];
@@ -953,6 +1284,7 @@ export default function MapView() {
   };
 
   const swapStartEnd = () => {
+    directGpxModeRef.current = false;
     if (!startLonLat || !endLonLat) return;
     const nextStart = endLonLat;
     const nextEnd = startLonLat;
@@ -965,12 +1297,16 @@ export default function MapView() {
     setStartLabel(nextStartLabel);
     setEndLabel(nextEndLabel);
     setWaypointInputs((prev) => [...prev].reverse());
+    if (route.length > 1) {
+      setRoute((prev) => [...prev].reverse());
+    }
     setPickMode("none");
     setPendingWaypointIndex(null);
     writeQuery(nextStart, nextEnd);
   };
 
   const clearRoute = () => {
+    directGpxModeRef.current = false;
     // Invalidate any in-flight routing response so it cannot repopulate cleared state.
     latestRouteReqRef.current += 1;
     setStartLonLat(null);
@@ -1061,7 +1397,90 @@ export default function MapView() {
     const preset = TAIPEI_ROUTE_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
     setApplyingPresetId(presetId);
+    pendingPresetCacheRef.current = null;
     try {
+      const fitBoundsToRoute = (coords: LonLat[]) => {
+        const map = mapRef.current?.getMap();
+        if (!map || coords.length < 2) return;
+        const lons = coords.map((p) => p[0]);
+        const lats = coords.map((p) => p[1]);
+        const minLon = Math.min(...lons);
+        const maxLon = Math.max(...lons);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        if (Number.isFinite(minLon) && Number.isFinite(maxLon) && Number.isFinite(minLat) && Number.isFinite(maxLat)) {
+          map.fitBounds(
+            [
+              [minLon, minLat],
+              [maxLon, maxLat],
+            ],
+            { padding: 80, duration: 900, maxZoom: 14 }
+          );
+        }
+      };
+
+      const cachedRoute = loadCachedPresetRoute(preset.id);
+      if (cachedRoute && cachedRoute.length >= 2) {
+        directGpxModeRef.current = true;
+        pendingPresetCacheRef.current = null;
+        const [startLon, startLat] = cachedRoute[0];
+        const [endLon, endLat] = cachedRoute[cachedRoute.length - 1];
+        const hasStops = preset.stops.length >= 2 && !preset.gpxPath;
+        const startName = hasStops ? preset.stops[0].name : "起點";
+        const endName = hasStops ? preset.stops[preset.stops.length - 1].name : "終點";
+        suppressAutoPlanRef.current = true;
+        setStartLonLat([startLon, startLat]);
+        setEndLonLat([endLon, endLat]);
+        setStartLabel(startName);
+        setEndLabel(endName);
+        setWaypointInputs(
+          hasStops
+            ? preset.stops.slice(1, -1).map((s) => ({ label: s.name, lonLat: s.lonLat }))
+            : []
+        );
+        setPickMode("none");
+        setPendingWaypointIndex(null);
+        setMapCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
+        writeQuery([startLon, startLat], [endLon, endLat]);
+
+        const requestId = ++latestRouteReqRef.current;
+        await applyRouteFromLonLat(
+          cachedRoute,
+          { source: "planned", incomingCount: cachedRoute.length },
+          requestId
+        );
+        fitBoundsToRoute(cachedRoute);
+        return;
+      }
+
+      if (preset.gpxPath) {
+        directGpxModeRef.current = true;
+        const r = await fetch(preset.gpxPath, { cache: "no-store" });
+        if (!r.ok) throw new Error(`Failed to load GPX (${r.status})`);
+        const gpxTrack = parseGpxTrackPoints(await r.text());
+        if (gpxTrack.length < 2) throw new Error("GPX track has insufficient points.");
+
+        const [startLon, startLat] = gpxTrack[0];
+        const [endLon, endLat] = gpxTrack[gpxTrack.length - 1];
+        suppressAutoPlanRef.current = true;
+        setStartLonLat([startLon, startLat]);
+        setEndLonLat([endLon, endLat]);
+        setStartLabel("起點");
+        setEndLabel("終點");
+        setWaypointInputs([]);
+        setPickMode("none");
+        setPendingWaypointIndex(null);
+        setMapCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
+        writeQuery([startLon, startLat], [endLon, endLat]);
+
+        const requestId = ++latestRouteReqRef.current;
+        pendingPresetCacheRef.current = preset.id;
+        await applyRouteFromLonLat(gpxTrack, { source: "planned", incomingCount: gpxTrack.length }, requestId);
+        fitBoundsToRoute(gpxTrack);
+        return;
+      }
+      directGpxModeRef.current = false;
+
       const points = preset.stops.map((s) => ({
         name: s.name,
         lat: s.lonLat[1],
@@ -1112,6 +1531,7 @@ export default function MapView() {
         }
       }
       writeQuery([start.lon, start.lat], [end.lon, end.lat]);
+      pendingPresetCacheRef.current = preset.id;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load preset route";
       setRouteDebug((prev) => ({
@@ -1133,6 +1553,11 @@ export default function MapView() {
 
   // Plan route when start/end change
   useEffect(() => {
+    if (directGpxModeRef.current) return;
+    if (suppressAutoPlanRef.current) {
+      suppressAutoPlanRef.current = false;
+      return;
+    }
     const waypointCoords = waypointInputs
       .map((w) => w.lonLat)
       .filter((v): v is LonLat => Array.isArray(v));
@@ -1257,7 +1682,7 @@ export default function MapView() {
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
-      <Map
+      <MapGL
         ref={mapRef}
         initialViewState={{
           longitude: mapCenter.lon,
@@ -1265,7 +1690,7 @@ export default function MapView() {
           zoom: zoom,
         }}
         style={{ width: "100%", height: "100%" }}
-        mapStyle="mapbox://styles/mapbox/outdoors-v12"
+        mapStyle="mapbox://styles/mapbox/light-v11"
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
         onMove={(evt) => {
           setMapCenter({ lat: evt.viewState.latitude, lon: evt.viewState.longitude });
@@ -1522,7 +1947,7 @@ export default function MapView() {
             />
           </Source>
         )}
-      </Map>
+      </MapGL>
 
       {/* Webcam toggle */}
       {!isPhone && (
@@ -1595,6 +2020,7 @@ export default function MapView() {
               endLabel={endLabel}
               waypoints={waypointInputs.map((w) => ({ label: w.label, latLon: w.lonLat }))}
               onWaypointsChange={(next) => {
+                directGpxModeRef.current = false;
                 setWaypointInputs(() => {
                   const updated = next.map((w) => ({ label: w.label, lonLat: w.latLon ?? null }));
                   const waypointCoords = updated
@@ -1627,6 +2053,7 @@ export default function MapView() {
               onApplyPreset={applyRoutePreset}
               isApplyingPreset={Boolean(applyingPresetId)}
               onPick={(role: RoutingPanelRole, lat, lon, label, wpIdx) => {
+                directGpxModeRef.current = false;
                 const v: LonLat = [lon, lat];
                 if (role === "start") {
                   setStartLonLat(v);
@@ -1682,6 +2109,7 @@ export default function MapView() {
             <WindLegend
               mode={routeColorMode}
               onToggleMode={() => setRouteColorMode((prev) => (prev === "wind" ? "slope" : "wind"))}
+              windAngleRatio={windAngleRatio}
             />
           </div>
         </div>
