@@ -7,7 +7,17 @@ import { windToColor } from "@/lib/wind";
  * @param speedMs Wind speed (m/s)
  */
 export function getArrowIcon(dirDeg: number, speedMs: number): string {
-  const color = Number.isFinite(speedMs) ? windToColor(speedMs) : "#6b7280";
+  const color = "#b45309";
+  const strokeWidth =
+    Number.isFinite(speedMs)
+      ? speedMs < 3
+        ? 1.2
+        : speedMs < 6
+          ? 3.2
+          : speedMs < 10
+            ? 5.2
+            : 7.2
+      : 2;
   // SVG arrow points to the right (east) at 0deg rotation.
   // Meteorological azimuth uses 0deg = north, clockwise positive.
   // Convert so displayed arrow matches map azimuth convention.
@@ -24,8 +34,8 @@ export function getArrowIcon(dirDeg: number, speedMs: number): string {
       color: ${color};
     ">
       <svg width="36" height="36" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-        <polygon points="16,8 24,12 16,16" fill="currentColor" />
+        <line x1="4" y1="12" x2="20" y2="12" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" />
+        <polygon points="16,8 24,12 16,16" fill="${color}" />
       </svg>
     </div>
   `;

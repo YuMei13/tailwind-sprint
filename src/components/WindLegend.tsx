@@ -20,6 +20,7 @@ export default function WindLegend({ mode = "wind", onToggleMode, windAngleRatio
   const routeBins = (mode === "slope" ? SLOPE_BINS : ROUTE_WIND_ANGLE_BINS).slice().reverse();
   const routeTitle = mode === "slope" ? "Route Slope" : "Route vs Wind Angle";
   const windSpeedBins = WIND_BINS_MS.slice().reverse();
+  const speedStrokeMap = [9, 6, 4, 2];
   const showRatio = mode === "wind" && windAngleRatio && windAngleRatio.total > 0;
   const ratioTotal = windAngleRatio?.total ?? 0;
   const samePct = ratioTotal > 0 ? (windAngleRatio!.same / ratioTotal) * 100 : 0;
@@ -121,9 +122,9 @@ export default function WindLegend({ mode = "wind", onToggleMode, windAngleRatio
               marginRight: 6,
             }}
           >
-            <svg width="15" height="10" viewBox="0 0 24 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <line x1="2" y1="8" x2="18" y2="8" stroke={b.color} strokeWidth="2" strokeLinecap="round" />
-              <polygon points="16,4 24,8 16,12" fill={b.color} />
+            <svg width="20" height="12" viewBox="0 0 24 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <line x1="2" y1="8" x2="18" y2="8" stroke="#b45309" strokeWidth={speedStrokeMap[i] ?? 2} strokeLinecap="round" />
+              <polygon points="16,4 24,8 16,12" fill="#b45309" />
             </svg>
           </span>
           <span>{b.label}</span>
