@@ -55,6 +55,7 @@ type RouteDebug = {
 };
 const WEBCAM_RADIUS_KM = 0.5;
 const ROUTE_CACHE_PREFIX = "ts-route-cache:v5:";
+const ROUTE_API_CACHE_PREFIX = "ts-route-api-cache:v1:";
 
 const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
@@ -533,6 +534,7 @@ export default function MapView() {
   const directGpxModeRef = useRef(false);
   const routeCacheRef = useRef<Map<string, LonLat[]>>(new Map());
   const pendingPresetCacheRef = useRef<string | null>(null);
+  const routeApiCacheRef = useRef<Map<string, LonLat[]>>(new Map());
 
   const mapRef = useRef<MapRef | null>(null);
   const isPhone = viewportWidth < 768;
@@ -588,6 +590,48 @@ export default function MapView() {
     }
   };
 
+  const normalizeCoord = (value: number) => Math.round(value * 1e5) / 1e5;
+
+  const buildRouteApiCacheKey = (coords: LonLat[], profile: string) => {
+    const compact = coords.map(([lon, lat]) => [normalizeCoord(lon), normalizeCoord(lat)]);
+    return `${ROUTE_API_CACHE_PREFIX}${profile}:${JSON.stringify(compact)}`;
+  };
+
+  const loadRouteApiCache = (key: string): LonLat[] | null => {
+    const mem = routeApiCacheRef.current.get(key);
+    if (mem && mem.length >= 2) return mem;
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      const coords: LonLat[] = [];
+      for (const item of parsed) {
+        if (!Array.isArray(item) || item.length < 2) continue;
+        const lon = Number(item[0]);
+        const lat = Number(item[1]);
+        if (isValidCoordinate(lat, lon)) coords.push([lon, lat]);
+      }
+      if (coords.length < 2) return null;
+      routeApiCacheRef.current.set(key, coords);
+      return coords;
+    } catch {
+      return null;
+    }
+  };
+
+  const saveRouteApiCache = (key: string, coords: LonLat[]) => {
+    if (coords.length < 2) return;
+    routeApiCacheRef.current.set(key, coords);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(key, JSON.stringify(coords));
+    } catch {
+      // Ignore quota errors.
+    }
+  };
+
   const focusPt = useMemo(() => {
     if (focusIdx == null || !elevPts[focusIdx]) return null;
     const p = elevPts[focusIdx];
@@ -638,31 +682,43 @@ export default function MapView() {
   };
 
   async function fetchLegCoords(a: LonLat, b: LonLat): Promise<LonLat[]> {
+    const profile = "cycling";
+    const cacheKey = buildRouteApiCacheKey([a, b], profile);
+    const cached = loadRouteApiCache(cacheKey);
+    if (cached) return cached;
     const r = await fetchJSON<{
       geometry: { type: string; coordinates: [number, number][] };
     }>("/api/mapbox-route", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ coordinates: [a, b], profile: "cycling" }),
+        body: JSON.stringify({ coordinates: [a, b], profile }),
         timeoutMs: 45000,
       });
-    return (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
+    const coords = (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
       isValidCoordinate(lat, lon)
     );
+    saveRouteApiCache(cacheKey, coords);
+    return coords;
   }
 
   async function fetchRouteForAllPoints(points: LonLat[]): Promise<LonLat[]> {
+    const profile = "cycling";
+    const cacheKey = buildRouteApiCacheKey(points, profile);
+    const cached = loadRouteApiCache(cacheKey);
+    if (cached) return cached;
     const r = await fetchJSON<{
       geometry: { type: string; coordinates: [number, number][] };
     }>("/api/mapbox-route", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: points, profile: "cycling" }),
+      body: JSON.stringify({ coordinates: points, profile }),
       timeoutMs: 45000,
     });
-    return (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
+    const coords = (r?.geometry?.coordinates ?? []).filter(([lon, lat]) =>
       isValidCoordinate(lat, lon)
     );
+    saveRouteApiCache(cacheKey, coords);
+    return coords;
   }
 
   function sameLonLat(a: LonLat, b: LonLat) {
