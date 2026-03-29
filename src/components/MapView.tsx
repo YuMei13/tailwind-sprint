@@ -84,7 +84,8 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "bike100-zhongshe",
     name: "台北士林｜中社路",
-    description: "參考 bike100 台北路線：士林中社路。",
+    description: "來源：上傳 GPX 檔 中社路.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/zhongshe.gpx",
     stops: [
       { name: "國立故宮博物院", lonLat: [121.549134, 25.102039] },
       { name: "中社路一段", lonLat: [121.560807, 25.106856] },
@@ -170,7 +171,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "rwgps-49826274",
     name: "環大臺北自行車挑戰（RWGPS）",
-    description: "來源：上傳 GPX 檔 環大台北200K.gpx（直接依軌跡順序顯示）。",
+    description: "來源：上傳 GPX 檔 環大台北200K.gpx。",
     gpxPath: "/rwgps-49826274.gpx",
     stops: [
       { name: "起點（板橋）", lonLat: [121.46942, 25.00955] },
@@ -185,7 +186,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "rwgps-38179892",
     name: "環小台北自行車道（RWGPS）",
-    description: "來源：上傳 GPX 檔 環小台北(深南路).gpx（直接依軌跡順序顯示）。",
+    description: "來源：上傳 GPX 檔 環小台北(深南路).gpx。",
     gpxPath: "/rwgps-38179892.gpx",
     stops: [
       { name: "起點（文山）", lonLat: [121.53943, 24.98836] },
@@ -200,7 +201,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "feng-east-3t-550k",
     name: "瘋系列－東三塔 550K",
-    description: "來源：上傳 GPX 檔 瘋系列-東三塔550k.gpx（直接依軌跡順序顯示）。",
+    description: "來源：上傳 GPX 檔 瘋系列-東三塔550k.gpx。",
     gpxPath: "/feng-east-3t-550k.gpx",
     stops: [
       { name: "起點", lonLat: [121.53776, 25.28993] },
@@ -210,7 +211,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "taipei-central-loop",
     name: "環中台北",
-    description: "來源：上傳 GPX 檔 環中台北.gpx（直接依軌跡順序顯示）。",
+    description: "來源：上傳 GPX 檔 環中台北.gpx。",
     gpxPath: "/taipei-central-loop.gpx",
     stops: [
       { name: "起點", lonLat: [121.487379, 25.049422] },
@@ -220,7 +221,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "fengguizui",
     name: "風櫃嘴",
-    description: "來源：上傳 GPX 檔 風櫃嘴_FengGuiZui.gpx（直接依軌跡順序顯示）。",
+    description: "來源：上傳 GPX 檔 風櫃嘴_FengGuiZui.gpx。",
     gpxPath: "/fengguizui.gpx",
     stops: [
       { name: "起點", lonLat: [121.55085, 25.10048] },
@@ -230,7 +231,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "yangjin-3p",
     name: "陽金3P",
-    description: "來源：上傳 GPX 檔 陽金3P.gpx（直接依軌跡順序顯示）。",
+    description: "來源：上傳 GPX 檔 陽金3P.gpx。",
     gpxPath: "/yangjin-3p.gpx",
     stops: [
       { name: "起點", lonLat: [121.53575, 25.10858] },
@@ -273,6 +274,91 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function normalizeDeg(v: number) {
+  const x = v % 360;
+  return x < 0 ? x + 360 : x;
+}
+
+function bearingDeg(from: LatLng, to: LatLng): number {
+  const lat1 = (from[0] * Math.PI) / 180;
+  const lat2 = (to[0] * Math.PI) / 180;
+  const dLon = ((to[1] - from[1]) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return normalizeDeg((Math.atan2(y, x) * 180) / Math.PI);
+}
+
+function smallestAngleDiffDeg(a: number, b: number): number {
+  const d = Math.abs(normalizeDeg(a) - normalizeDeg(b));
+  return d > 180 ? 360 - d : d;
+}
+
+function cumulativeDistancesLatLng(route: LatLng[]): number[] {
+  const n = route.length;
+  const cum: number[] = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const a = route[i - 1];
+    const b = route[i];
+    cum[i] = cum[i - 1] + haversineMeters(a[0], a[1], b[0], b[1]);
+  }
+  return cum;
+}
+
+function sliceBetweenLatLng(route: LatLng[], cum: number[], d0: number, d1: number): LatLng[] {
+  const n = route.length;
+  if (n < 2 || d1 <= d0) return [];
+  const out: LatLng[] = [];
+  let started = false;
+
+  for (let i = 1; i < n; i++) {
+    const a = route[i - 1];
+    const b = route[i];
+    const da = cum[i - 1];
+    const db = cum[i];
+    const segLen = db - da;
+    if (segLen <= 0) continue;
+
+    if (db < d0) continue;
+    if (da > d1) break;
+
+    if (!started) {
+      if (d0 <= da) {
+        out.push(a);
+      } else {
+        const t0 = (d0 - da) / segLen;
+        out.push([a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0]);
+      }
+      started = true;
+    }
+
+    if (db >= d1) {
+      const t1 = (d1 - da) / segLen;
+      out.push([a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1]);
+      break;
+    } else {
+      out.push(b);
+    }
+  }
+
+  return out.length >= 2 ? out : [];
+}
+
+function nearestWindDirDeg(winds: WindPoint[], p: LatLng): number | undefined {
+  let bestD2 = Number.POSITIVE_INFINITY;
+  let best: number | undefined = undefined;
+  for (const w of winds) {
+    if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon) || !Number.isFinite(w.dirDeg)) continue;
+    const dx = w.lat - p[0];
+    const dy = w.lon - p[1];
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = w.dirDeg as number;
+    }
+  }
+  return best;
 }
 
 function webcamKeyOf(w: WebcamItem): string {
@@ -637,6 +723,70 @@ export default function MapView() {
     const p = elevPts[focusIdx];
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
+
+  const windAngleRatio = useMemo(() => {
+    if (!Array.isArray(route) || route.length < 2) return null;
+    if (!Array.isArray(winds) || winds.length === 0) return null;
+    const cum = cumulativeDistancesLatLng(route);
+    const total = cum[cum.length - 1];
+    if (!Number.isFinite(total) || total <= 0) return null;
+    const segLen = Math.max(50, segmentMeters);
+    const segCount = Math.max(1, Math.ceil(total / segLen));
+    let same = 0;
+    let cross = 0;
+    let opposite = 0;
+    let counted = 0;
+    for (let k = 0; k < segCount; k++) {
+      const d0 = k * segLen;
+      const d1 = Math.min(total, (k + 1) * segLen);
+      const pts = sliceBetweenLatLng(route, cum, d0, d1);
+      if (pts.length < 2) continue;
+      const midPt = pts[Math.floor(pts.length / 2)] ?? pts[0];
+      const windDir = nearestWindDirDeg(winds, midPt);
+      if (typeof windDir !== "number") continue;
+      const routeDir = bearingDeg(pts[0], pts[pts.length - 1]);
+      const angle = smallestAngleDiffDeg(routeDir, windDir);
+      if (angle < 45) same += 1;
+      else if (angle < 135) cross += 1;
+      else opposite += 1;
+      counted += 1;
+    }
+
+    if (counted === 0) {
+      let fallbackSame = 0;
+      let fallbackCross = 0;
+      let fallbackOpposite = 0;
+      let fallbackCount = 0;
+      for (const w of winds) {
+        if (!Number.isFinite(w.lat) || !Number.isFinite(w.lon) || !Number.isFinite(w.dirDeg)) continue;
+        let bestIdx = -1;
+        let bestD2 = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < route.length; i++) {
+          const dx = route[i][0] - w.lat;
+          const dy = route[i][1] - w.lon;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < bestD2) {
+            bestD2 = d2;
+            bestIdx = i;
+          }
+        }
+        if (bestIdx < 0) continue;
+        const prev = route[Math.max(0, bestIdx - 1)];
+        const next = route[Math.min(route.length - 1, bestIdx + 1)];
+        if (!prev || !next || (prev[0] === next[0] && prev[1] === next[1])) continue;
+        const routeDir = bearingDeg(prev, next);
+        const angle = smallestAngleDiffDeg(routeDir, w.dirDeg as number);
+        if (angle < 45) fallbackSame += 1;
+        else if (angle < 135) fallbackCross += 1;
+        else fallbackOpposite += 1;
+        fallbackCount += 1;
+      }
+      if (fallbackCount === 0) return null;
+      return { same: fallbackSame, cross: fallbackCross, opposite: fallbackOpposite, total: fallbackCount };
+    }
+
+    return { same, cross, opposite, total: counted };
+  }, [route, winds, segmentMeters]);
 
   // === URL Read/Write ===
   const router = useRouter();
@@ -1130,6 +1280,9 @@ export default function MapView() {
     setStartLabel(nextStartLabel);
     setEndLabel(nextEndLabel);
     setWaypointInputs((prev) => [...prev].reverse());
+    if (route.length > 1) {
+      setRoute((prev) => [...prev].reverse());
+    }
     setPickMode("none");
     setPendingWaypointIndex(null);
     writeQuery(nextStart, nextEnd);
@@ -1939,6 +2092,7 @@ export default function MapView() {
             <WindLegend
               mode={routeColorMode}
               onToggleMode={() => setRouteColorMode((prev) => (prev === "wind" ? "slope" : "wind"))}
+              windAngleRatio={windAngleRatio}
             />
           </div>
         </div>
