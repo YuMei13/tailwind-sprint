@@ -54,7 +54,7 @@ type RouteDebug = {
   message?: string;
 };
 const WEBCAM_RADIUS_KM = 0.5;
-const ROUTE_CACHE_PREFIX = "ts-route-cache:v4:";
+const ROUTE_CACHE_PREFIX = "ts-route-cache:v5:";
 
 const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
@@ -152,7 +152,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "bike100-rulai",
     name: "自行車－如來神掌線",
-    description: "來源：上傳 GPX 檔 瘋神掌100K順騎.gpx（直接依軌跡順序顯示）。",
+    description: "來源：上傳 GPX 檔 瘋神掌100K順騎.gpx。",
     gpxPath: "/rulai-100k.gpx",
     stops: [
       { name: "起點", lonLat: [121.53406, 25.09764] },
@@ -169,7 +169,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "rwgps-49826274",
     name: "環大臺北自行車挑戰（RWGPS）",
-    description: "來源：上傳 GPX 檔 環大台北 160K（板橋→貢寮→淡水）.gpx（直接依軌跡順序顯示）。",
+    description: "來源：上傳 GPX 檔 環大台北200K.gpx（直接依軌跡順序顯示）。",
     gpxPath: "/rwgps-49826274.gpx",
     stops: [
       { name: "起點（板橋）", lonLat: [121.46942, 25.00955] },
@@ -204,6 +204,36 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
     stops: [
       { name: "起點", lonLat: [121.53776, 25.28993] },
       { name: "終點", lonLat: [120.84815, 21.9111] },
+    ],
+  },
+  {
+    id: "taipei-central-loop",
+    name: "環中台北",
+    description: "來源：上傳 GPX 檔 環中台北.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/taipei-central-loop.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.487379, 25.049422] },
+      { name: "終點", lonLat: [121.489951, 25.048421] },
+    ],
+  },
+  {
+    id: "fengguizui",
+    name: "風櫃嘴",
+    description: "來源：上傳 GPX 檔 風櫃嘴_FengGuiZui.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/fengguizui.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.55085, 25.10048] },
+      { name: "終點", lonLat: [121.60005, 25.1341] },
+    ],
+  },
+  {
+    id: "yangjin-3p",
+    name: "陽金3P",
+    description: "來源：上傳 GPX 檔 陽金3P.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/yangjin-3p.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.53575, 25.10858] },
+      { name: "終點", lonLat: [121.563, 25.1675] },
     ],
   },
 ];
