@@ -20,7 +20,7 @@ type WindPoint = WindPointType;
 type ElevPoint = { lat: number; lon: number; elevation?: number; error?: true; msg?: string };
 type WebcamItem = {
   id?: string | number;
-  provider?: "windy" | "twipcam" | "both";
+  provider?: "windy";
   title?: string;
   lat: number;
   lon: number;
@@ -54,7 +54,7 @@ type RouteDebug = {
   message?: string;
 };
 const WEBCAM_RADIUS_KM = 0.5;
-const ROUTE_CACHE_PREFIX = "ts-route-cache:v5:";
+const ROUTE_CACHE_PREFIX = "ts-route-cache:v10:";
 const ROUTE_API_CACHE_PREFIX = "ts-route-api-cache:v1:";
 
 const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
@@ -84,7 +84,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "bike100-zhongshe",
     name: "台北士林｜中社路",
-    description: "來源：上傳 GPX 檔 中社路.gpx（直接依軌跡順序顯示）。",
+    description: "來源：上傳 GPX 檔 中社路.gpx。",
     gpxPath: "/zhongshe.gpx",
     stops: [
       { name: "國立故宮博物院", lonLat: [121.549134, 25.102039] },
@@ -123,8 +123,9 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   },
   {
     id: "bike100-haima",
-    name: "台北陽明山系｜海馬（逆時針）",
-    description: "參考 bike100 高評分台北路線：陽明山海馬。",
+    name: "台北陽明山系｜海馬",
+    description: "來源：上傳 GPX 檔 海馬.gpx。",
+    gpxPath: "/haima.gpx",
     stops: [
       { name: "至善公園", lonLat: [121.538985, 25.098452] },
       { name: "風櫃嘴", lonLat: [121.5996, 25.1329] },
@@ -170,7 +171,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   },
   {
     id: "rwgps-49826274",
-    name: "環大臺北自行車挑戰（RWGPS）",
+    name: "環大台北自行車挑戰（RWGPS）",
     description: "來源：上傳 GPX 檔 環大台北200K.gpx。",
     gpxPath: "/rwgps-49826274.gpx",
     stops: [
@@ -186,7 +187,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "rwgps-38179892",
     name: "環小台北自行車道（RWGPS）",
-    description: "來源：上傳 GPX 檔 環小台北(深南路).gpx。",
+    description: "來源：上傳 GPX 檔 環小台北.gpx（直接依軌跡順序顯示）。",
     gpxPath: "/rwgps-38179892.gpx",
     stops: [
       { name: "起點（文山）", lonLat: [121.53943, 24.98836] },
@@ -201,7 +202,7 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "feng-east-3t-550k",
     name: "瘋系列－東三塔 550K",
-    description: "來源：上傳 GPX 檔 瘋系列-東三塔550k.gpx。",
+    description: "來源：上傳 GPX 檔 瘋系列東三塔550K_(經旭海).gpx。",
     gpxPath: "/feng-east-3t-550k.gpx",
     stops: [
       { name: "起點", lonLat: [121.53776, 25.28993] },
@@ -231,11 +232,131 @@ const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
     id: "yangjin-3p",
     name: "陽金3P",
-    description: "來源：上傳 GPX 檔 陽金3P.gpx。",
+    description: "來源：上傳 GPX 檔 陽金3P.gpx（直接依軌跡順序顯示）。",
     gpxPath: "/yangjin-3p.gpx",
     stops: [
       { name: "起點", lonLat: [121.53575, 25.10858] },
       { name: "終點", lonLat: [121.563, 25.1675] },
+    ],
+  },
+  {
+    id: "tis-wuling",
+    name: "TIS 武嶺",
+    description: "來源：上傳 GPX 檔 TIS武嶺.gpx。",
+    gpxPath: "/tis-wuling.gpx",
+    stops: [
+      { name: "起點", lonLat: [120.979231, 23.973577] },
+      { name: "終點", lonLat: [121.275798, 24.137187] },
+    ],
+  },
+  {
+    id: "buyanting",
+    name: "不厭亭",
+    description: "來源：上傳 GPX 檔 不厭亭.gpx。",
+    gpxPath: "/buyanting.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.508518, 25.062784] },
+      { name: "終點", lonLat: [121.508554, 25.062788] },
+    ],
+  },
+  {
+    id: "wufenshan",
+    name: "五分山",
+    description: "來源：上傳 GPX 檔 五分山.gpx。",
+    gpxPath: "/wufenshan.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.500498, 25.043198] },
+      { name: "終點", lonLat: [121.805968, 25.108571] },
+    ],
+  },
+  {
+    id: "lengfeng-zhongjian",
+    name: "冷風中劍",
+    description: "來源：上傳 GPX 檔 冷風中劍.gpx。",
+    gpxPath: "/lengfeng-zhongjian.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.551863, 25.101098] },
+      { name: "終點", lonLat: [121.551911, 25.10126] },
+    ],
+  },
+  {
+    id: "beigao-360",
+    name: "北高360",
+    description: "來源：上傳 GPX 檔 北高360.gpx。",
+    gpxPath: "/beigao-360.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.386803, 25.142307] },
+      { name: "終點", lonLat: [120.301276, 22.69387] },
+    ],
+  },
+  {
+    id: "balaka",
+    name: "巴拉卡",
+    description: "來源：上傳 GPX 檔 巴拉卡.gpx。",
+    gpxPath: "/balaka.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.508301, 25.060214] },
+      { name: "終點", lonLat: [121.508378, 25.06327] },
+    ],
+  },
+  {
+    id: "sunmoonlake-83k",
+    name: "日月潭 83k",
+    description: "來源：上傳 GPX 檔 日月潭83k.gpx。",
+    gpxPath: "/sunmoonlake-83k.gpx",
+    stops: [
+      { name: "起點", lonLat: [120.901891, 23.854854] },
+      { name: "終點", lonLat: [120.90214, 23.850463] },
+    ],
+  },
+  {
+    id: "fulshan-wulai",
+    name: "烏來｜福山部落",
+    description: "來源：上傳 GPX 檔 烏來_福山部落.gpx。",
+    gpxPath: "/fulshan-wulai.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.500615, 25.044331] },
+      { name: "終點", lonLat: [121.507798, 25.05658] },
+    ],
+  },
+  {
+    id: "huadong-365-day1",
+    name: "環花東 365 Day 1",
+    description: "來源：上傳 GPX 檔 環花東365_Day1.gpx。",
+    gpxPath: "/huadong-365-day1.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.60887996666133, 23.96668997593224] },
+      { name: "終點", lonLat: [121.12190974876285, 22.770249657332897] },
+    ],
+  },
+  {
+    id: "huadong-365-day2",
+    name: "環花東 365 Day 2",
+    description: "來源：上傳 GPX 檔 環花東365_Day2.gpx。",
+    gpxPath: "/huadong-365-day2.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.1293548066169, 22.79334582388401] },
+      { name: "終點", lonLat: [121.59524152055383, 23.938634153455496] },
+    ],
+  },
+  {
+    id: "shimen-reservoir",
+    name: "石門水庫",
+    description: "來源：上傳 GPX 檔 石門水庫.gpx。",
+    gpxPath: "/shimen-reservoir.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.478557, 25.045799] },
+      { name: "終點", lonLat: [121.478574, 25.045912] },
+    ],
+  },
+  {
+    id: "jiaobanshan",
+    name: "角板山",
+    description: "來源：上傳 GPX 檔 角板山.gpx。",
+    gpxPath: "/jiaobanshan.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.477841, 25.045424] },
+      { name: "終點", lonLat: [121.477815, 25.045398] },
     ],
   },
 ];
@@ -621,6 +742,7 @@ export default function MapView() {
   const routeCacheRef = useRef<Map<string, LonLat[]>>(new Map());
   const pendingPresetCacheRef = useRef<string | null>(null);
   const routeApiCacheRef = useRef<Map<string, LonLat[]>>(new Map());
+  const pendingGeoCenterRef = useRef<{ lat: number; lon: number } | null>(null);
 
   const mapRef = useRef<MapRef | null>(null);
   const isPhone = viewportWidth < 768;
@@ -642,6 +764,12 @@ export default function MapView() {
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
         setMapCenter({ lat: latitude, lon: longitude });
         setZoom((z) => (z < 12 ? 12 : z));
+        pendingGeoCenterRef.current = { lat: latitude, lon: longitude };
+        const map = mapRef.current?.getMap();
+        if (map) {
+          map.flyTo({ center: [longitude, latitude], zoom: Math.max(map.getZoom(), 12), duration: 800 });
+          pendingGeoCenterRef.current = null;
+        }
       },
       () => {
         // Ignore location errors and keep default center.
@@ -763,8 +891,8 @@ export default function MapView() {
       if (typeof windDir !== "number") continue;
       const routeDir = bearingDeg(pts[0], pts[pts.length - 1]);
       const angle = smallestAngleDiffDeg(routeDir, windDir);
-      if (angle < 45) same += 1;
-      else if (angle < 135) cross += 1;
+      if (angle < 60) same += 1;
+      else if (angle < 120) cross += 1;
       else opposite += 1;
       counted += 1;
     }
@@ -793,8 +921,8 @@ export default function MapView() {
         if (!prev || !next || (prev[0] === next[0] && prev[1] === next[1])) continue;
         const routeDir = bearingDeg(prev, next);
         const angle = smallestAngleDiffDeg(routeDir, w.dirDeg as number);
-        if (angle < 45) fallbackSame += 1;
-        else if (angle < 135) fallbackCross += 1;
+        if (angle < 60) fallbackSame += 1;
+        else if (angle < 120) fallbackCross += 1;
         else fallbackOpposite += 1;
         fallbackCount += 1;
       }
@@ -1215,6 +1343,13 @@ export default function MapView() {
       const next = [...prev];
       const [moving] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moving);
+      const waypointCoords = next
+        .map((w) => w.lonLat)
+        .filter((v): v is LonLat => Array.isArray(v));
+      if (startLonLat && endLonLat) {
+        const all: [number, number][] = [startLonLat, ...waypointCoords, endLonLat];
+        void planRouteMulti(all);
+      }
       return next;
     });
   };
@@ -1286,6 +1421,7 @@ export default function MapView() {
   const swapStartEnd = () => {
     directGpxModeRef.current = false;
     if (!startLonLat || !endLonLat) return;
+    suppressAutoPlanRef.current = true;
     const nextStart = endLonLat;
     const nextEnd = startLonLat;
     const nextStartLabel =
@@ -1299,6 +1435,9 @@ export default function MapView() {
     setWaypointInputs((prev) => [...prev].reverse());
     if (route.length > 1) {
       setRoute((prev) => [...prev].reverse());
+    }
+    if (elevPts.length > 1) {
+      setElevPts((prev) => [...prev].reverse());
     }
     setPickMode("none");
     setPendingWaypointIndex(null);
@@ -1618,41 +1757,47 @@ export default function MapView() {
     const fetchAroundRoute = async () => {
       const anchors = sampleRoutePoints(route, 8);
       if (anchors.length === 0) return [] as WebcamItem[];
-      const lists = await Promise.all(
-        anchors.map(async (pt) => {
-          const p = new URLSearchParams({
-            lat: String(pt.lat),
-            lon: String(pt.lon),
-            radiusKm: String(WEBCAM_RADIUS_KM),
-            limit: "30",
-          });
-          const j = await fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 });
-          return j.items ?? [];
-        })
-      );
-      const merged = new globalThis.Map<string, WebcamItem>();
-      for (const row of lists.flat()) {
-        const key = webcamKeyOf(row);
-        const prev = merged.get(key);
-        if (!prev) {
-          merged.set(key, row);
-          continue;
+      const fetchForRadius = async (radiusKm: number) => {
+        const lists = await Promise.all(
+          anchors.map(async (pt) => {
+            const p = new URLSearchParams({
+              lat: String(pt.lat),
+              lon: String(pt.lon),
+              radiusKm: String(radiusKm),
+              limit: "30",
+            });
+            const j = await fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 });
+            return j.items ?? [];
+          })
+        );
+        const merged = new globalThis.Map<string, WebcamItem>();
+        for (const row of lists.flat()) {
+          const key = webcamKeyOf(row);
+          const prev = merged.get(key);
+          if (!prev) {
+            merged.set(key, row);
+            continue;
+          }
+          const d = Math.min(prev.distance ?? Number.POSITIVE_INFINITY, row.distance ?? Number.POSITIVE_INFINITY);
+          merged.set(key, { ...prev, ...row, distance: Number.isFinite(d) ? d : prev.distance });
         }
-        const d = Math.min(prev.distance ?? Number.POSITIVE_INFINITY, row.distance ?? Number.POSITIVE_INFINITY);
-        merged.set(key, { ...prev, ...row, distance: Number.isFinite(d) ? d : prev.distance });
-      }
-      const routePts = route.length > 0 ? route : anchors.map((a) => [a.lat, a.lon] as [number, number]);
-      const withRouteDistance = Array.from(merged.values()).map((cam) => {
-        const minToRoute = routePts.reduce((best, [rlat, rlon]) => {
-          const d = haversineMeters(cam.lat, cam.lon, rlat, rlon);
-          return d < best ? d : best;
-        }, Number.POSITIVE_INFINITY);
-        return { ...cam, distance: Math.round(minToRoute) };
-      });
-      return withRouteDistance
-        .filter((cam) => (cam.distance ?? Number.POSITIVE_INFINITY) <= WEBCAM_RADIUS_KM * 1000 + 10)
-        .sort((a, b) => (a.distance ?? Number.POSITIVE_INFINITY) - (b.distance ?? Number.POSITIVE_INFINITY))
-        .slice(0, 50);
+        const routePts = route.length > 0 ? route : anchors.map((a) => [a.lat, a.lon] as [number, number]);
+        const withRouteDistance = Array.from(merged.values()).map((cam) => {
+          const minToRoute = routePts.reduce((best, [rlat, rlon]) => {
+            const d = haversineMeters(cam.lat, cam.lon, rlat, rlon);
+            return d < best ? d : best;
+          }, Number.POSITIVE_INFINITY);
+          return { ...cam, distance: Math.round(minToRoute) };
+        });
+        return withRouteDistance
+          .filter((cam) => (cam.distance ?? Number.POSITIVE_INFINITY) <= radiusKm * 1000 + 10)
+          .sort((a, b) => (a.distance ?? Number.POSITIVE_INFINITY) - (b.distance ?? Number.POSITIVE_INFINITY))
+          .slice(0, 50);
+      };
+
+      const primary = await fetchForRadius(WEBCAM_RADIUS_KM);
+      if (primary.length > 0) return primary;
+      return fetchForRadius(10);
     };
 
     let cancelled = false;
@@ -1692,6 +1837,14 @@ export default function MapView() {
         style={{ width: "100%", height: "100%" }}
         mapStyle="mapbox://styles/mapbox/light-v11"
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
+        onLoad={() => {
+          const pending = pendingGeoCenterRef.current;
+          if (!pending) return;
+          const map = mapRef.current?.getMap();
+          if (!map) return;
+          map.flyTo({ center: [pending.lon, pending.lat], zoom: Math.max(map.getZoom(), 12), duration: 800 });
+          pendingGeoCenterRef.current = null;
+        }}
         onMove={(evt) => {
           setMapCenter({ lat: evt.viewState.latitude, lon: evt.viewState.longitude });
           setZoom(evt.viewState.zoom);
@@ -1747,12 +1900,74 @@ export default function MapView() {
 
         {/* Start marker */}
         {startLonLat && (
-          <Marker longitude={startLonLat[0]} latitude={startLonLat[1]} color="#22c55e" />
+          <Marker
+            longitude={startLonLat[0]}
+            latitude={startLonLat[1]}
+            draggable
+            onDragEnd={(e) => {
+              directGpxModeRef.current = false;
+              const { lng, lat } = e.lngLat;
+              const v: [number, number] = [lng, lat];
+              setStartLonLat(v);
+              writeQuery(v, endLonLat);
+            }}
+          >
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 999,
+                background: "#22c55e",
+                border: "3px solid #ffffff",
+                boxShadow: "0 6px 14px rgba(15,23,42,0.35)",
+                color: "#0f172a",
+                fontWeight: 800,
+                fontSize: 12,
+                display: "grid",
+                placeItems: "center",
+                transform: "translate(-50%, -50%)",
+              }}
+              aria-label="Start"
+            >
+              S
+            </div>
+          </Marker>
         )}
 
         {/* End marker */}
         {endLonLat && (
-          <Marker longitude={endLonLat[0]} latitude={endLonLat[1]} color="#ef4444" />
+          <Marker
+            longitude={endLonLat[0]}
+            latitude={endLonLat[1]}
+            draggable
+            onDragEnd={(e) => {
+              directGpxModeRef.current = false;
+              const { lng, lat } = e.lngLat;
+              const v: [number, number] = [lng, lat];
+              setEndLonLat(v);
+              writeQuery(startLonLat, v);
+            }}
+          >
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 999,
+                background: "#ef4444",
+                border: "3px solid #ffffff",
+                boxShadow: "0 6px 14px rgba(15,23,42,0.35)",
+                color: "#0f172a",
+                fontWeight: 800,
+                fontSize: 12,
+                display: "grid",
+                placeItems: "center",
+                transform: "translate(-50%, -50%)",
+              }}
+              aria-label="End"
+            >
+              E
+            </div>
+          </Marker>
         )}
 
         {/* Waypoint markers */}
