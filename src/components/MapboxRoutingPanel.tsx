@@ -671,7 +671,8 @@ export default function MapboxRoutingPanel({
       {waypointQueries.map((q, i) => (
         <div key={`wp-${i}`}>
           <div style={{ ...box.label, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 12, opacity: 0.7 }}>⋮⋮</span>
               🚩 Stop {i + 1}
               {pickMode === "waypoint" && pendingWaypointIndex === i ? " (click map...)" : ""}
             </span>
