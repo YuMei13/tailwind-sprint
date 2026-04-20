@@ -3,7 +3,7 @@
 
 import MapGL, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MapMouseEvent } from "mapbox-gl";
 import Image from "next/image";
 import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWindLayer";
@@ -743,10 +743,36 @@ export default function MapView() {
   const pendingPresetCacheRef = useRef<string | null>(null);
   const routeApiCacheRef = useRef<Map<string, LonLat[]>>(new Map());
   const pendingGeoCenterRef = useRef<{ lat: number; lon: number } | null>(null);
+  const didAutoCenterToUserRef = useRef(false);
 
   const mapRef = useRef<MapRef | null>(null);
   const isPhone = viewportWidth < 768;
   const isTablet = viewportWidth >= 768 && viewportWidth < 1200;
+
+  const setProgrammaticCenter = useCallback(
+    (next: { lat: number; lon: number }) => {
+      // On phone, keep the user's location as center after initial geolocation fly-to.
+      if (isPhone && didAutoCenterToUserRef.current) return;
+      setMapCenter(next);
+    },
+    [isPhone]
+  );
+
+  const tryFlyToPendingGeoCenter = useCallback(() => {
+    if (didAutoCenterToUserRef.current) return;
+    const pending = pendingGeoCenterRef.current;
+    if (!pending) return;
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    if (typeof map.isStyleLoaded === "function" && !map.isStyleLoaded()) return;
+    map.flyTo({
+      center: [pending.lon, pending.lat],
+      zoom: Math.max(map.getZoom(), 12),
+      duration: 900,
+    });
+    pendingGeoCenterRef.current = null;
+    didAutoCenterToUserRef.current = true;
+  }, []);
 
   useEffect(() => {
     const onResize = () => setViewportWidth(window.innerWidth);
@@ -765,18 +791,14 @@ export default function MapView() {
         setMapCenter({ lat: latitude, lon: longitude });
         setZoom((z) => (z < 12 ? 12 : z));
         pendingGeoCenterRef.current = { lat: latitude, lon: longitude };
-        const map = mapRef.current?.getMap();
-        if (map) {
-          map.flyTo({ center: [longitude, latitude], zoom: Math.max(map.getZoom(), 12), duration: 800 });
-          pendingGeoCenterRef.current = null;
-        }
+        tryFlyToPendingGeoCenter();
       },
       () => {
         // Ignore location errors and keep default center.
       },
-      { enableHighAccuracy: false, timeout: 6000, maximumAge: 120000 }
+      { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 }
     );
-  }, []);
+  }, [tryFlyToPendingGeoCenter]);
 
   useEffect(() => {
     if (isPhone) {
@@ -950,7 +972,7 @@ export default function MapView() {
     const e = parse(searchParams.get("end"));
     if (s) setStartLonLat(s);
     if (e) setEndLonLat(e);
-    if (s && e) setMapCenter({ lat: (s[1] + e[1]) / 2, lon: (s[0] + e[0]) / 2 });
+    if (s && e) setProgrammaticCenter({ lat: (s[1] + e[1]) / 2, lon: (s[0] + e[0]) / 2 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1230,7 +1252,7 @@ export default function MapView() {
 
     // Center view
     const mid = line[Math.floor(line.length / 2)];
-    if (mid) setMapCenter({ lat: mid[0], lon: mid[1] });
+    if (mid) setProgrammaticCenter({ lat: mid[0], lon: mid[1] });
 
     // Clear interaction state
     setCursorPt(null);
@@ -1539,6 +1561,7 @@ export default function MapView() {
     pendingPresetCacheRef.current = null;
     try {
       const fitBoundsToRoute = (coords: LonLat[]) => {
+        if (isPhone && didAutoCenterToUserRef.current) return;
         const map = mapRef.current?.getMap();
         if (!map || coords.length < 2) return;
         const lons = coords.map((p) => p[0]);
@@ -1579,7 +1602,7 @@ export default function MapView() {
         );
         setPickMode("none");
         setPendingWaypointIndex(null);
-        setMapCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
+        setProgrammaticCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
         writeQuery([startLon, startLat], [endLon, endLat]);
 
         const requestId = ++latestRouteReqRef.current;
@@ -1609,7 +1632,7 @@ export default function MapView() {
         setWaypointInputs([]);
         setPickMode("none");
         setPendingWaypointIndex(null);
-        setMapCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
+        setProgrammaticCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
         writeQuery([startLon, startLat], [endLon, endLat]);
 
         const requestId = ++latestRouteReqRef.current;
@@ -1644,7 +1667,7 @@ export default function MapView() {
       );
       setPickMode("none");
       setPendingWaypointIndex(null);
-      setMapCenter({ lat: (start.lat + end.lat) / 2, lon: (start.lon + end.lon) / 2 });
+      setProgrammaticCenter({ lat: (start.lat + end.lat) / 2, lon: (start.lon + end.lon) / 2 });
       // Zoom map to fit the full preset route area.
       const map = mapRef.current?.getMap();
       if (map) {
@@ -1837,14 +1860,8 @@ export default function MapView() {
         style={{ width: "100%", height: "100%" }}
         mapStyle="mapbox://styles/mapbox/light-v11"
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
-        onLoad={() => {
-          const pending = pendingGeoCenterRef.current;
-          if (!pending) return;
-          const map = mapRef.current?.getMap();
-          if (!map) return;
-          map.flyTo({ center: [pending.lon, pending.lat], zoom: Math.max(map.getZoom(), 12), duration: 800 });
-          pendingGeoCenterRef.current = null;
-        }}
+        onLoad={tryFlyToPendingGeoCenter}
+        onIdle={tryFlyToPendingGeoCenter}
         onMove={(evt) => {
           setMapCenter({ lat: evt.viewState.latitude, lon: evt.viewState.longitude });
           setZoom(evt.viewState.zoom);
