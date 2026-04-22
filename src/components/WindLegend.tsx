@@ -1,5 +1,6 @@
 "use client";
 import { ROUTE_WIND_ANGLE_BINS, WIND_BINS_MS } from "@/lib/wind";
+import { getArrowIcon } from "@/lib/windIcons";
 
 type Props = {
   mode?: "wind" | "slope";
@@ -20,7 +21,7 @@ export default function WindLegend({ mode = "wind", onToggleMode, windAngleRatio
   const routeBins = (mode === "slope" ? SLOPE_BINS : ROUTE_WIND_ANGLE_BINS).slice().reverse();
   const routeTitle = mode === "slope" ? "Route Slope" : "Route vs Wind Angle";
   const windSpeedBins = WIND_BINS_MS.slice().reverse();
-  const speedStrokeMap = [9, 6, 4, 2];
+  const speedSampleMs = (max: number) => (Number.isFinite(max) ? Math.max(0.8, max - 0.2) : 12);
   const showRatio = mode === "wind" && windAngleRatio && windAngleRatio.total > 0;
   const ratioTotal = windAngleRatio?.total ?? 0;
   const samePct = ratioTotal > 0 ? (windAngleRatio!.same / ratioTotal) * 100 : 0;
@@ -115,18 +116,16 @@ export default function WindLegend({ mode = "wind", onToggleMode, windAngleRatio
           <span
             style={{
               display: "inline-flex",
-              width: 18,
-              height: 11,
+              width: 28,
+              height: 20,
               alignItems: "center",
               justifyContent: "center",
               marginRight: 6,
             }}
-          >
-            <svg width="20" height="12" viewBox="0 0 24 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <line x1="2" y1="8" x2="18" y2="8" stroke="#C4AF27" strokeWidth={speedStrokeMap[i] ?? 2} strokeLinecap="round" />
-              <polygon points="16,4 24,8 16,12" fill="#C4AF27" />
-            </svg>
-          </span>
+            dangerouslySetInnerHTML={{
+              __html: getArrowIcon(90, speedSampleMs(b.max), 17),
+            }}
+          />
           <span>{b.label}</span>
         </div>
       ))}

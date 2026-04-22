@@ -2156,6 +2156,7 @@ export default function MapView() {
             mode={routeColorMode}
             weight={6}
             segmentMeters={segmentMeters}
+            zoom={zoom}
           />
         )}
 
