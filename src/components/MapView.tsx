@@ -630,16 +630,17 @@ function MapInteraction({
 
 export default function MapView() {
   const toggleButtonStyle: React.CSSProperties = {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
-    padding: "6px 10px",
-    background: "rgba(15,23,42,0.9)",
-    color: "#ffffff",
-    border: "1px solid rgba(255,255,255,0.35)",
+    padding: "8px 12px",
+    background: "rgba(248,250,252,0.94)",
+    color: "#0f172a",
+    border: "1px solid rgba(148,163,184,0.45)",
     borderRadius: 999,
     cursor: "pointer",
-    boxShadow: "0 6px 14px rgba(0,0,0,0.25)",
-    backdropFilter: "blur(2px)",
+    boxShadow: "0 8px 24px rgba(2,6,23,0.16)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
   };
   const closeButtonStyle: React.CSSProperties = {
     width: 22,
@@ -657,17 +658,37 @@ export default function MapView() {
     padding: 0,
   };
   const panelCardStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.95)",
+    background: "rgba(255,255,255,0.94)",
     color: "#1e293b",
-    borderRadius: 8,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-    padding: 8,
+    borderRadius: 14,
+    border: "1px solid rgba(148,163,184,0.28)",
+    boxShadow: "0 14px 40px rgba(15,23,42,0.2)",
+    padding: 10,
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
   };
   const panelHeaderStyle: React.CSSProperties = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 8,
+  };
+  const panelIconDockStyle: React.CSSProperties = {
+    position: "absolute",
+    right: 8,
+    top: 12,
+    zIndex: 1700,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  };
+  const panelIconGlyphStyle: React.CSSProperties = {
+    width: 18,
+    height: 18,
+    display: "inline-grid",
+    placeItems: "center",
+    textAlign: "center",
+    lineHeight: 1,
   };
   const webcamMarkerWrapStyle: React.CSSProperties = {
     position: "relative",
@@ -729,9 +750,9 @@ export default function MapView() {
 
   // Show/hide panels
   const [showWebcams, setShowWebcams] = useState(false);
-  const [showElevation, setShowElevation] = useState(true);
-  const [showRoutingPanel, setShowRoutingPanel] = useState(true);
-  const [showDataPanel, setShowDataPanel] = useState(true);
+  const [showElevation, setShowElevation] = useState(false);
+  const [showRoutingPanel, setShowRoutingPanel] = useState(false);
+  const [showDataPanel, setShowDataPanel] = useState(false);
   const [routeColorMode, setRouteColorMode] = useState<"wind" | "slope">("wind");
   const [viewportWidth, setViewportWidth] = useState(1200);
   const [, setRouteDebug] = useState<RouteDebug | null>(null);
@@ -748,6 +769,20 @@ export default function MapView() {
   const mapRef = useRef<MapRef | null>(null);
   const isPhone = viewportWidth < 768;
   const isTablet = viewportWidth >= 768 && viewportWidth < 1200;
+  const panelIconButtonStyle = (active: boolean): React.CSSProperties => ({
+    ...toggleButtonStyle,
+    width: 42,
+    height: 42,
+    minWidth: 42,
+    padding: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: active ? "rgba(234,179,8,0.92)" : "rgba(248,250,252,0.94)",
+    color: active ? "#111827" : "#0f172a",
+    border: active ? "1px solid rgba(161,98,7,0.45)" : toggleButtonStyle.border,
+    borderRadius: 999,
+  });
 
   const setProgrammaticCenter = useCallback(
     (next: { lat: number; lon: number }) => {
@@ -799,14 +834,6 @@ export default function MapView() {
       { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 }
     );
   }, [tryFlyToPendingGeoCenter]);
-
-  useEffect(() => {
-    if (isPhone) {
-      setShowDataPanel(false);
-    } else {
-      setShowDataPanel(true);
-    }
-  }, [isPhone]);
 
   const loadCachedPresetRoute = (presetId: string): LonLat[] | null => {
     const mem = routeCacheRef.current.get(presetId);
@@ -2181,65 +2208,117 @@ export default function MapView() {
         )}
       </MapGL>
 
-      {/* Webcam toggle */}
-      {!isPhone && (
-        <div
-          style={{
-            position: "absolute",
-            left: 56,
-            top: 12,
-            zIndex: 1600,
+      <div style={{ ...panelIconDockStyle, top: isPhone ? 72 : 12 }}>
+        <button
+          onClick={() => {
+            setShowRoutingPanel((v) => {
+              const next = !v;
+              if (next) {
+                setShowDataPanel(false);
+                setShowElevation(false);
+              }
+              return next;
+            });
           }}
+          style={panelIconButtonStyle(showRoutingPanel)}
+          aria-label="Toggle route panel"
+          title="Route"
         >
-          <button onClick={() => setShowWebcams((v) => !v)} style={toggleButtonStyle}>
-            {showWebcams ? "Hide Webcams" : "Show Webcams"}
-          </button>
-        </div>
-      )}
-
-      {isPhone && (
-        <div style={{ position: "absolute", right: 8, top: 12, zIndex: 1700, display: "flex", gap: 6 }}>
-          <button onClick={() => setShowWebcams((v) => !v)} style={toggleButtonStyle}>
-            {showWebcams ? "Hide Webcams" : "Show Webcams"}
-          </button>
-          {!showElevation && (
-            <button onClick={() => setShowElevation(true)} style={toggleButtonStyle}>
-              Show Elevation
-            </button>
-          )}
-          <button onClick={() => setShowDataPanel((v) => !v)} style={toggleButtonStyle}>
-            {showDataPanel ? "Hide Legend" : "Legend"}
-          </button>
-          <button onClick={() => setShowRoutingPanel((v) => !v)} style={toggleButtonStyle}>
-            {showRoutingPanel ? "Hide Route" : "Route"}
-          </button>
-        </div>
-      )}
+          <span style={panelIconGlyphStyle} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 17c3-5 6-7 9-8" />
+              <path d="M13 9h6" />
+              <path d="M17 5l4 4-4 4" />
+              <circle cx="4" cy="17" r="1.5" />
+            </svg>
+          </span>
+        </button>
+        <button
+          onClick={() => {
+            setShowDataPanel((v) => {
+              const next = !v;
+              if (next) {
+                setShowRoutingPanel(false);
+                setShowElevation(false);
+              }
+              return next;
+            });
+          }}
+          style={panelIconButtonStyle(showDataPanel)}
+          aria-label="Toggle legend panel"
+          title="Legend"
+        >
+          <span style={panelIconGlyphStyle} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="5" width="5" height="5" rx="1" />
+              <rect x="10" y="5" width="5" height="5" rx="1" />
+              <rect x="16" y="5" width="4" height="5" rx="1" />
+              <rect x="4" y="13" width="8" height="6" rx="1" />
+              <rect x="13" y="13" width="7" height="6" rx="1" />
+            </svg>
+          </span>
+        </button>
+        <button
+          onClick={() => {
+            setShowElevation((v) => {
+              const next = !v;
+              if (next) {
+                setShowRoutingPanel(false);
+                setShowDataPanel(false);
+              }
+              return next;
+            });
+          }}
+          style={panelIconButtonStyle(showElevation)}
+          aria-label="Toggle elevation panel"
+          title="Elevation"
+        >
+          <span style={panelIconGlyphStyle} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 17 9 9l4 5 4-7 4 10" />
+            </svg>
+          </span>
+        </button>
+        <button
+          onClick={() => setShowWebcams((v) => !v)}
+          style={panelIconButtonStyle(showWebcams)}
+          aria-label="Toggle webcams"
+          title="Webcams"
+        >
+          <span style={panelIconGlyphStyle} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="7" width="12" height="10" rx="2" />
+              <path d="m15 10 6-3v10l-6-3" />
+            </svg>
+          </span>
+        </button>
+      </div>
 
       {/* Routing Panel */}
       {showRoutingPanel && (
         <div
           style={{
             position: "absolute",
-            right: isPhone ? 8 : 12,
-            left: "auto",
-            top: isPhone ? "auto" : 12,
-            bottom: isPhone ? 12 : "auto",
+            right: isPhone ? 8 : 132,
+            left: isPhone ? 8 : "auto",
+            top: isPhone ? 124 : 12,
+            bottom: "auto",
             zIndex: 1650,
           }}
         >
           <div
             style={{
               ...panelCardStyle,
-              width: isPhone ? "min(86vw, 320px)" : isTablet ? "min(42vw, 360px)" : "320px",
-              maxHeight: isPhone ? "38vh" : isTablet ? "46vh" : "50vh",
+              width: isPhone ? "auto" : isTablet ? "clamp(320px, 46vw, 440px)" : "380px",
+              maxHeight: isPhone ? "68vh" : isTablet ? "74vh" : "76vh",
               overflowY: "auto",
               overflowX: "hidden",
               overscrollBehavior: "contain",
+              padding: isPhone ? "10px 12px" : panelCardStyle.padding,
             }}
           >
             <div style={{ ...panelHeaderStyle, marginBottom: 8 }}>
-              <span style={{ fontWeight: 600 }}>Routing Panel</span>
+              <span style={{ fontWeight: 700 }}>Route Planner</span>
               <button onClick={() => setShowRoutingPanel(false)} style={closeButtonStyle} aria-label="Close routing panel">
                 ✖
               </button>
@@ -2311,26 +2390,18 @@ export default function MapView() {
           </div>
         </div>
       )}
-      {!showRoutingPanel && !isPhone && (
-        <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1650 }}>
-          <button onClick={() => setShowRoutingPanel(true)} style={toggleButtonStyle}>
-            Show Routing
-          </button>
-        </div>
-      )}
-
       {/* Data Panels */}
-      {(!isPhone || showDataPanel) && (
+      {showDataPanel && (
         <div
           style={{
             position: "absolute",
-            right: isPhone ? 8 : 12,
-            left: "auto",
-            top: isPhone ? 58 : "auto",
-            bottom: isPhone ? "auto" : 12,
+            right: isPhone ? 8 : 132,
+            left: isPhone ? 8 : "auto",
+            top: isPhone ? 124 : 12,
+            bottom: "auto",
             zIndex: 1660,
-            width: isPhone ? "min(82vw, 300px)" : isTablet ? "min(38vw, 320px)" : "300px",
-            maxHeight: isPhone ? "34vh" : isTablet ? "44vh" : "38vh",
+            width: isPhone ? "auto" : isTablet ? "min(44vw, 380px)" : "340px",
+            maxHeight: isPhone ? "60vh" : isTablet ? "66vh" : "64vh",
             overflowY: "auto",
             display: "flex",
             flexDirection: "column",
@@ -2347,77 +2418,66 @@ export default function MapView() {
         </div>
       )}
 
-      {/* Dedicated elevation panel for all devices */}
-      {!isPhone && (
-        <div style={{ position: "absolute", left: 56, bottom: 12, zIndex: 1670 }}>
-          {!showElevation && (
-            <button onClick={() => setShowElevation(true)} style={toggleButtonStyle}>
-              Show Elevation
-            </button>
-          )}
+      {showElevation && (
+        <div
+          style={{
+            position: "absolute",
+            right: isPhone ? 8 : 132,
+            left: isPhone ? 8 : "auto",
+            bottom: isPhone ? 12 : 12,
+            top: isPhone ? 124 : "auto",
+            zIndex: 1665,
+            width: isPhone
+              ? "auto"
+              : isTablet
+                ? "clamp(360px, 50vw, 680px)"
+                : "clamp(460px, 52vw, 920px)",
+          }}
+        >
+          <div
+            style={{
+              ...panelCardStyle,
+              padding: isPhone ? "10px 12px" : 8,
+              maxHeight: isPhone ? "44vh" : isTablet ? "36vh" : "36vh",
+              overflowY: "auto",
+              minWidth: 0,
+              width: "100%",
+            }}
+          >
+            <div style={panelHeaderStyle}>
+              <span style={{ fontWeight: 600 }}>Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}</span>
+              <button onClick={() => setShowElevation(false)} style={closeButtonStyle} aria-label="Close elevation panel">
+                ✖
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: "#999", borderBottom: "1px solid #e5e7eb", paddingBottom: 4, marginBottom: 4 }}>
+              Points: {elevPts.length} | Valid: {elevPts.filter((p) => typeof p.elevation === "number").length}
+            </div>
+            {elevPts.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#666", padding: "8px 0" }}>
+                No elevation data. Draw a route to see the elevation profile.
+              </div>
+            ) : (
+              <ElevationPanel
+                points={elevPts as ElevPt[]}
+                selectedIndex={focusIdx}
+                externalHoverIndex={panelHoverIdx}
+                onHover={(pt) => {
+                  setCursorPt(
+                    pt && typeof pt.lat === "number" && typeof pt.lon === "number"
+                      ? { lat: pt.lat, lon: pt.lon }
+                      : null
+                  );
+                }}
+                onLeave={() => setCursorPt(null)}
+                onClick={(_, idx) => {
+                  if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx));
+                }}
+              />
+            )}
+          </div>
         </div>
       )}
-
-      {/* Dedicated elevation panel for all devices */}
-      <div
-        style={{
-          position: "absolute",
-          left: isPhone ? "auto" : 12,
-          right: isPhone ? 8 : "auto",
-          bottom: isPhone ? (showRoutingPanel ? "40vh" : 12) : 12,
-          zIndex: 1665,
-          width: isPhone
-            ? "clamp(220px, 78vw, 320px)"
-            : isTablet
-              ? "clamp(280px, 40vw, 420px)"
-              : "clamp(320px, 30vw, 460px)",
-        }}
-      >
-          {showElevation ? (
-            <div
-              style={{
-                ...panelCardStyle,
-                padding: 6,
-                maxHeight: isPhone ? "34vh" : isTablet ? "30vh" : "34vh",
-                overflowY: "auto",
-                minWidth: 0,
-                width: "100%",
-              }}
-            >
-              <div style={panelHeaderStyle}>
-                <span style={{ fontWeight: 600 }}>Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}</span>
-                <button onClick={() => setShowElevation(false)} style={closeButtonStyle} aria-label="Close elevation panel">
-                  ✖
-                </button>
-              </div>
-              <div style={{ fontSize: 11, color: "#999", borderBottom: "1px solid #e5e7eb", paddingBottom: 4, marginBottom: 4 }}>
-                Points: {elevPts.length} | Valid: {elevPts.filter((p) => typeof p.elevation === "number").length}
-              </div>
-              {elevPts.length === 0 ? (
-                <div style={{ fontSize: 12, color: "#666", padding: "8px 0" }}>
-                  No elevation data. Draw a route to see the elevation profile.
-                </div>
-              ) : (
-                <ElevationPanel
-                  points={elevPts as ElevPt[]}
-                  selectedIndex={focusIdx}
-                  externalHoverIndex={panelHoverIdx}
-                  onHover={(pt) => {
-                    setCursorPt(
-                      pt && typeof pt.lat === "number" && typeof pt.lon === "number"
-                        ? { lat: pt.lat, lon: pt.lon }
-                        : null
-                    );
-                  }}
-                  onLeave={() => setCursorPt(null)}
-                  onClick={(_, idx) => {
-                    if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx));
-                  }}
-                />
-              )}
-            </div>
-          ) : null}
-      </div>
     </div>
   );
 }
