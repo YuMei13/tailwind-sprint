@@ -918,6 +918,18 @@ export default function MapView() {
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
 
+  const elevationStats = useMemo(() => {
+    const vals = elevPts
+      .map((p) => p.elevation)
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    if (vals.length === 0) return { valid: 0, min: null as number | null, max: null as number | null };
+    return {
+      valid: vals.length,
+      min: Math.min(...vals),
+      max: Math.max(...vals),
+    };
+  }, [elevPts]);
+
   const windAngleRatio = useMemo(() => {
     if (!Array.isArray(route) || route.length < 2) return null;
     if (!Array.isArray(winds) || winds.length === 0) return null;
@@ -1069,6 +1081,17 @@ export default function MapView() {
     return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
   }
 
+  function downsampleLonLat(coords: LonLat[], maxPoints: number): LonLat[] {
+    if (!Array.isArray(coords) || coords.length <= 2) return coords;
+    if (coords.length <= maxPoints) return coords;
+    const step = Math.max(1, Math.ceil(coords.length / maxPoints));
+    const sampled = coords.filter((_, idx) => idx % step === 0);
+    const last = coords[coords.length - 1];
+    const tail = sampled[sampled.length - 1];
+    if (!tail || !sameLonLat(tail, last)) sampled.push(last);
+    return sampled;
+  }
+
   // Multi-point route planning
   const applyRouteFromLonLat = async (
     merged: [number, number][],
@@ -1099,21 +1122,24 @@ export default function MapView() {
       return;
     }
 
+    const routeLonLat = downsampleLonLat(merged, 12000);
+    const analysisLonLat = downsampleLonLat(routeLonLat, 6000);
+
     // Set route (convert to [lat, lon])
-    const line: [number, number][] = merged.map(([lon, lat]) => [lat, lon]);
+    const line: [number, number][] = routeLonLat.map(([lon, lat]) => [lat, lon]);
     if (requestId !== latestRouteReqRef.current) return;
     setRoute(line);
     const pendingPresetId = pendingPresetCacheRef.current;
     if (pendingPresetId) {
-      saveCachedPresetRoute(pendingPresetId, merged);
+      saveCachedPresetRoute(pendingPresetId, routeLonLat);
       pendingPresetCacheRef.current = null;
     }
 
     // Wind: sample route and retry with fewer points if response has no valid wind vectors.
     const buildSample = (targetCount: number): [number, number][] => {
-      const step = Math.max(1, Math.floor(merged.length / targetCount));
-      const pts = merged.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon] as [number, number]);
-      const last = merged[merged.length - 1];
+      const step = Math.max(1, Math.floor(routeLonLat.length / targetCount));
+      const pts = routeLonLat.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon] as [number, number]);
+      const last = routeLonLat[routeLonLat.length - 1];
       const lastS = pts[pts.length - 1];
       if (!lastS || lastS[0] !== last[1] || lastS[1] !== last[0]) {
         pts.push([last[1], last[0]]);
@@ -1233,7 +1259,7 @@ export default function MapView() {
       const elevData = await fetchJSON<{ points: ElevPoint[] }>("/api/elevation?nocache=1", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ coords: merged, intervalMeters: 300, dataset: "srtm90m" }),
+        body: JSON.stringify({ coords: analysisLonLat, intervalMeters: 300, dataset: "srtm90m" }),
         timeoutMs: 30000,
       });
       elevationPoints = Array.isArray(elevData.points) ? elevData.points : [];
@@ -1251,30 +1277,35 @@ export default function MapView() {
     }
 
     if (requestId !== latestRouteReqRef.current) return;
-    const sampleLonLat = [...merged.slice(0, 3), ...merged.slice(-3)];
+    const sampleLonLat = [...routeLonLat.slice(0, 3), ...routeLonLat.slice(-3)];
     const elevationValid = elevationPoints.filter((p) => typeof p.elevation === "number").length;
     const elevationErrors = elevationPoints.filter((p) => p.error).length;
+    const baseMessage = elevationRequestFailed
+      ? "Elevation request failed"
+      : elevationValid > 0
+        ? windRequestFailed
+          ? "Wind request failed"
+          : windUsedSyntheticFallback
+            ? "Wind API unavailable; using fallback vectors."
+            : validWindPoints.length === 0
+              ? "No valid wind vectors returned"
+              : undefined
+        : "Elevation API returned no numeric elevations";
+    const simplifyPrefix =
+      merged.length !== routeLonLat.length
+        ? `Route simplified ${merged.length} -> ${routeLonLat.length} points. `
+        : "";
     setRouteDebug({
       source: meta.source,
       incomingCount: meta.incomingCount,
-      mergedCount: merged.length,
+      mergedCount: routeLonLat.length,
       sampleLonLat,
       windCount: validWindPoints.length,
       elevationReturned: elevationPoints.length,
       elevationValid,
       elevationErrors,
       updatedAt: new Date().toISOString(),
-      message: elevationRequestFailed
-        ? "Elevation request failed"
-        : elevationValid > 0
-          ? windRequestFailed
-            ? "Wind request failed"
-            : windUsedSyntheticFallback
-              ? "Wind API unavailable; using fallback vectors."
-            : validWindPoints.length === 0
-              ? "No valid wind vectors returned"
-              : undefined
-          : "Elevation API returned no numeric elevations",
+      message: `${simplifyPrefix}${baseMessage ?? ""}`.trim() || undefined,
     });
 
     // Center view
@@ -2423,59 +2454,92 @@ export default function MapView() {
         <div
           style={{
             position: "absolute",
-            right: isPhone ? 8 : 132,
-            left: isPhone ? 8 : "auto",
-            bottom: isPhone ? 12 : 12,
-            top: isPhone ? 124 : "auto",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            top: "auto",
             zIndex: 1665,
-            width: isPhone
-              ? "auto"
-              : isTablet
-                ? "clamp(360px, 50vw, 680px)"
-                : "clamp(460px, 52vw, 920px)",
+            width: "100%",
           }}
         >
           <div
             style={{
-              ...panelCardStyle,
-              padding: isPhone ? "10px 12px" : 8,
-              maxHeight: isPhone ? "44vh" : isTablet ? "36vh" : "36vh",
-              overflowY: "auto",
-              minWidth: 0,
-              width: "100%",
+              background: "rgba(2,6,23,0.94)",
+              borderTop: "1px solid rgba(148,163,184,0.35)",
+              boxShadow: "0 -8px 24px rgba(2,6,23,0.45)",
+              padding: isPhone ? "8px 10px 10px" : "8px 12px 12px",
+              height: isPhone ? "30vh" : isTablet ? "27vh" : "25vh",
+              minHeight: isPhone ? 170 : 180,
+              display: "grid",
+              gridTemplateColumns: isPhone ? "1fr" : "220px 1fr",
+              gap: 10,
+              alignItems: "stretch",
             }}
           >
-            <div style={panelHeaderStyle}>
-              <span style={{ fontWeight: 600 }}>Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}</span>
-              <button onClick={() => setShowElevation(false)} style={closeButtonStyle} aria-label="Close elevation panel">
-                ✖
-              </button>
-            </div>
-            <div style={{ fontSize: 11, color: "#999", borderBottom: "1px solid #e5e7eb", paddingBottom: 4, marginBottom: 4 }}>
-              Points: {elevPts.length} | Valid: {elevPts.filter((p) => typeof p.elevation === "number").length}
-            </div>
-            {elevPts.length === 0 ? (
-              <div style={{ fontSize: 12, color: "#666", padding: "8px 0" }}>
-                No elevation data. Draw a route to see the elevation profile.
+            <div
+              style={{
+                color: "#e2e8f0",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "flex-start",
+                gap: 8,
+                paddingLeft: isPhone ? 42 : 12,
+                paddingBottom: isPhone ? 0 : 56,
+                borderRight: isPhone ? "none" : "1px solid rgba(148,163,184,0.2)",
+                paddingRight: isPhone ? 0 : 8,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>
+                  Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}
+                </span>
+                <button
+                  onClick={() => setShowElevation(false)}
+                  style={{ ...closeButtonStyle, width: 20, height: 20, lineHeight: "18px" }}
+                  aria-label="Close elevation panel"
+                >
+                  ✖
+                </button>
               </div>
-            ) : (
-              <ElevationPanel
-                points={elevPts as ElevPt[]}
-                selectedIndex={focusIdx}
-                externalHoverIndex={panelHoverIdx}
-                onHover={(pt) => {
-                  setCursorPt(
-                    pt && typeof pt.lat === "number" && typeof pt.lon === "number"
-                      ? { lat: pt.lat, lon: pt.lon }
-                      : null
-                  );
-                }}
-                onLeave={() => setCursorPt(null)}
-                onClick={(_, idx) => {
-                  if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx));
-                }}
-              />
-            )}
+              <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.35, marginTop: 4 }}>
+                <div>Points: {elevPts.length}</div>
+                <div>Valid: {elevationStats.valid}</div>
+                <div>Min: {elevationStats.min == null ? "-" : elevationStats.min.toFixed(0)} m</div>
+                <div>Max: {elevationStats.max == null ? "-" : elevationStats.max.toFixed(0)} m</div>
+              </div>
+            </div>
+            <div style={{ minWidth: 0, minHeight: 0 }}>
+              {elevPts.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#94a3b8",
+                    height: "100%",
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                >
+                  No elevation data. Draw a route to see the elevation profile.
+                </div>
+              ) : (
+                <ElevationPanel
+                  points={elevPts as ElevPt[]}
+                  selectedIndex={focusIdx}
+                  externalHoverIndex={panelHoverIdx}
+                  onHover={(pt) => {
+                    setCursorPt(
+                      pt && typeof pt.lat === "number" && typeof pt.lon === "number"
+                        ? { lat: pt.lat, lon: pt.lon }
+                        : null
+                    );
+                  }}
+                  onLeave={() => setCursorPt(null)}
+                  onClick={(_, idx) => {
+                    if (typeof idx === "number") setFocusIdx((p) => (p === idx ? p : idx));
+                  }}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
