@@ -3,7 +3,7 @@
 
 import MapGL, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MapMouseEvent } from "mapbox-gl";
 import Image from "next/image";
 import RouteWindLayer, { WindPoint as WindPointType } from "@/components/RouteWindLayer";
@@ -630,16 +630,17 @@ function MapInteraction({
 
 export default function MapView() {
   const toggleButtonStyle: React.CSSProperties = {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
-    padding: "6px 10px",
-    background: "rgba(15,23,42,0.9)",
-    color: "#ffffff",
-    border: "1px solid rgba(255,255,255,0.35)",
+    padding: "8px 12px",
+    background: "rgba(248,250,252,0.94)",
+    color: "#0f172a",
+    border: "1px solid rgba(148,163,184,0.45)",
     borderRadius: 999,
     cursor: "pointer",
-    boxShadow: "0 6px 14px rgba(0,0,0,0.25)",
-    backdropFilter: "blur(2px)",
+    boxShadow: "0 8px 24px rgba(2,6,23,0.16)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
   };
   const closeButtonStyle: React.CSSProperties = {
     width: 22,
@@ -657,17 +658,37 @@ export default function MapView() {
     padding: 0,
   };
   const panelCardStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.95)",
+    background: "rgba(255,255,255,0.94)",
     color: "#1e293b",
-    borderRadius: 8,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-    padding: 8,
+    borderRadius: 14,
+    border: "1px solid rgba(148,163,184,0.28)",
+    boxShadow: "0 14px 40px rgba(15,23,42,0.2)",
+    padding: 10,
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
   };
   const panelHeaderStyle: React.CSSProperties = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 8,
+  };
+  const panelIconDockStyle: React.CSSProperties = {
+    position: "absolute",
+    right: 8,
+    top: 12,
+    zIndex: 1700,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  };
+  const panelIconGlyphStyle: React.CSSProperties = {
+    width: 18,
+    height: 18,
+    display: "inline-grid",
+    placeItems: "center",
+    textAlign: "center",
+    lineHeight: 1,
   };
   const webcamMarkerWrapStyle: React.CSSProperties = {
     position: "relative",
@@ -729,9 +750,9 @@ export default function MapView() {
 
   // Show/hide panels
   const [showWebcams, setShowWebcams] = useState(false);
-  const [showElevation, setShowElevation] = useState(true);
-  const [showRoutingPanel, setShowRoutingPanel] = useState(true);
-  const [showDataPanel, setShowDataPanel] = useState(true);
+  const [showElevation, setShowElevation] = useState(false);
+  const [showRoutingPanel, setShowRoutingPanel] = useState(false);
+  const [showDataPanel, setShowDataPanel] = useState(false);
   const [routeColorMode, setRouteColorMode] = useState<"wind" | "slope">("wind");
   const [viewportWidth, setViewportWidth] = useState(1200);
   const [, setRouteDebug] = useState<RouteDebug | null>(null);
@@ -743,10 +764,50 @@ export default function MapView() {
   const pendingPresetCacheRef = useRef<string | null>(null);
   const routeApiCacheRef = useRef<Map<string, LonLat[]>>(new Map());
   const pendingGeoCenterRef = useRef<{ lat: number; lon: number } | null>(null);
+  const didAutoCenterToUserRef = useRef(false);
 
   const mapRef = useRef<MapRef | null>(null);
   const isPhone = viewportWidth < 768;
   const isTablet = viewportWidth >= 768 && viewportWidth < 1200;
+  const panelIconButtonStyle = (active: boolean): React.CSSProperties => ({
+    ...toggleButtonStyle,
+    width: 42,
+    height: 42,
+    minWidth: 42,
+    padding: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: active ? "rgba(234,179,8,0.92)" : "rgba(248,250,252,0.94)",
+    color: active ? "#111827" : "#0f172a",
+    border: active ? "1px solid rgba(161,98,7,0.45)" : toggleButtonStyle.border,
+    borderRadius: 999,
+  });
+
+  const setProgrammaticCenter = useCallback(
+    (next: { lat: number; lon: number }) => {
+      // On phone, keep the user's location as center after initial geolocation fly-to.
+      if (isPhone && didAutoCenterToUserRef.current) return;
+      setMapCenter(next);
+    },
+    [isPhone]
+  );
+
+  const tryFlyToPendingGeoCenter = useCallback(() => {
+    if (didAutoCenterToUserRef.current) return;
+    const pending = pendingGeoCenterRef.current;
+    if (!pending) return;
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    if (typeof map.isStyleLoaded === "function" && !map.isStyleLoaded()) return;
+    map.flyTo({
+      center: [pending.lon, pending.lat],
+      zoom: Math.max(map.getZoom(), 12),
+      duration: 900,
+    });
+    pendingGeoCenterRef.current = null;
+    didAutoCenterToUserRef.current = true;
+  }, []);
 
   useEffect(() => {
     const onResize = () => setViewportWidth(window.innerWidth);
@@ -765,26 +826,14 @@ export default function MapView() {
         setMapCenter({ lat: latitude, lon: longitude });
         setZoom((z) => (z < 12 ? 12 : z));
         pendingGeoCenterRef.current = { lat: latitude, lon: longitude };
-        const map = mapRef.current?.getMap();
-        if (map) {
-          map.flyTo({ center: [longitude, latitude], zoom: Math.max(map.getZoom(), 12), duration: 800 });
-          pendingGeoCenterRef.current = null;
-        }
+        tryFlyToPendingGeoCenter();
       },
       () => {
         // Ignore location errors and keep default center.
       },
-      { enableHighAccuracy: false, timeout: 6000, maximumAge: 120000 }
+      { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 }
     );
-  }, []);
-
-  useEffect(() => {
-    if (isPhone) {
-      setShowDataPanel(false);
-    } else {
-      setShowDataPanel(true);
-    }
-  }, [isPhone]);
+  }, [tryFlyToPendingGeoCenter]);
 
   const loadCachedPresetRoute = (presetId: string): LonLat[] | null => {
     const mem = routeCacheRef.current.get(presetId);
@@ -869,6 +918,18 @@ export default function MapView() {
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
 
+  const elevationStats = useMemo(() => {
+    const vals = elevPts
+      .map((p) => p.elevation)
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    if (vals.length === 0) return { valid: 0, min: null as number | null, max: null as number | null };
+    return {
+      valid: vals.length,
+      min: Math.min(...vals),
+      max: Math.max(...vals),
+    };
+  }, [elevPts]);
+
   const windAngleRatio = useMemo(() => {
     if (!Array.isArray(route) || route.length < 2) return null;
     if (!Array.isArray(winds) || winds.length === 0) return null;
@@ -950,7 +1011,7 @@ export default function MapView() {
     const e = parse(searchParams.get("end"));
     if (s) setStartLonLat(s);
     if (e) setEndLonLat(e);
-    if (s && e) setMapCenter({ lat: (s[1] + e[1]) / 2, lon: (s[0] + e[0]) / 2 });
+    if (s && e) setProgrammaticCenter({ lat: (s[1] + e[1]) / 2, lon: (s[0] + e[0]) / 2 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1020,6 +1081,17 @@ export default function MapView() {
     return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
   }
 
+  function downsampleLonLat(coords: LonLat[], maxPoints: number): LonLat[] {
+    if (!Array.isArray(coords) || coords.length <= 2) return coords;
+    if (coords.length <= maxPoints) return coords;
+    const step = Math.max(1, Math.ceil(coords.length / maxPoints));
+    const sampled = coords.filter((_, idx) => idx % step === 0);
+    const last = coords[coords.length - 1];
+    const tail = sampled[sampled.length - 1];
+    if (!tail || !sameLonLat(tail, last)) sampled.push(last);
+    return sampled;
+  }
+
   // Multi-point route planning
   const applyRouteFromLonLat = async (
     merged: [number, number][],
@@ -1050,21 +1122,24 @@ export default function MapView() {
       return;
     }
 
+    const routeLonLat = downsampleLonLat(merged, 12000);
+    const analysisLonLat = downsampleLonLat(routeLonLat, 6000);
+
     // Set route (convert to [lat, lon])
-    const line: [number, number][] = merged.map(([lon, lat]) => [lat, lon]);
+    const line: [number, number][] = routeLonLat.map(([lon, lat]) => [lat, lon]);
     if (requestId !== latestRouteReqRef.current) return;
     setRoute(line);
     const pendingPresetId = pendingPresetCacheRef.current;
     if (pendingPresetId) {
-      saveCachedPresetRoute(pendingPresetId, merged);
+      saveCachedPresetRoute(pendingPresetId, routeLonLat);
       pendingPresetCacheRef.current = null;
     }
 
     // Wind: sample route and retry with fewer points if response has no valid wind vectors.
     const buildSample = (targetCount: number): [number, number][] => {
-      const step = Math.max(1, Math.floor(merged.length / targetCount));
-      const pts = merged.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon] as [number, number]);
-      const last = merged[merged.length - 1];
+      const step = Math.max(1, Math.floor(routeLonLat.length / targetCount));
+      const pts = routeLonLat.filter((_, i) => i % step === 0).map(([lon, lat]) => [lat, lon] as [number, number]);
+      const last = routeLonLat[routeLonLat.length - 1];
       const lastS = pts[pts.length - 1];
       if (!lastS || lastS[0] !== last[1] || lastS[1] !== last[0]) {
         pts.push([last[1], last[0]]);
@@ -1184,7 +1259,7 @@ export default function MapView() {
       const elevData = await fetchJSON<{ points: ElevPoint[] }>("/api/elevation?nocache=1", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ coords: merged, intervalMeters: 300, dataset: "srtm90m" }),
+        body: JSON.stringify({ coords: analysisLonLat, intervalMeters: 300, dataset: "srtm90m" }),
         timeoutMs: 30000,
       });
       elevationPoints = Array.isArray(elevData.points) ? elevData.points : [];
@@ -1202,35 +1277,40 @@ export default function MapView() {
     }
 
     if (requestId !== latestRouteReqRef.current) return;
-    const sampleLonLat = [...merged.slice(0, 3), ...merged.slice(-3)];
+    const sampleLonLat = [...routeLonLat.slice(0, 3), ...routeLonLat.slice(-3)];
     const elevationValid = elevationPoints.filter((p) => typeof p.elevation === "number").length;
     const elevationErrors = elevationPoints.filter((p) => p.error).length;
+    const baseMessage = elevationRequestFailed
+      ? "Elevation request failed"
+      : elevationValid > 0
+        ? windRequestFailed
+          ? "Wind request failed"
+          : windUsedSyntheticFallback
+            ? "Wind API unavailable; using fallback vectors."
+            : validWindPoints.length === 0
+              ? "No valid wind vectors returned"
+              : undefined
+        : "Elevation API returned no numeric elevations";
+    const simplifyPrefix =
+      merged.length !== routeLonLat.length
+        ? `Route simplified ${merged.length} -> ${routeLonLat.length} points. `
+        : "";
     setRouteDebug({
       source: meta.source,
       incomingCount: meta.incomingCount,
-      mergedCount: merged.length,
+      mergedCount: routeLonLat.length,
       sampleLonLat,
       windCount: validWindPoints.length,
       elevationReturned: elevationPoints.length,
       elevationValid,
       elevationErrors,
       updatedAt: new Date().toISOString(),
-      message: elevationRequestFailed
-        ? "Elevation request failed"
-        : elevationValid > 0
-          ? windRequestFailed
-            ? "Wind request failed"
-            : windUsedSyntheticFallback
-              ? "Wind API unavailable; using fallback vectors."
-            : validWindPoints.length === 0
-              ? "No valid wind vectors returned"
-              : undefined
-          : "Elevation API returned no numeric elevations",
+      message: `${simplifyPrefix}${baseMessage ?? ""}`.trim() || undefined,
     });
 
     // Center view
     const mid = line[Math.floor(line.length / 2)];
-    if (mid) setMapCenter({ lat: mid[0], lon: mid[1] });
+    if (mid) setProgrammaticCenter({ lat: mid[0], lon: mid[1] });
 
     // Clear interaction state
     setCursorPt(null);
@@ -1539,6 +1619,7 @@ export default function MapView() {
     pendingPresetCacheRef.current = null;
     try {
       const fitBoundsToRoute = (coords: LonLat[]) => {
+        if (isPhone && didAutoCenterToUserRef.current) return;
         const map = mapRef.current?.getMap();
         if (!map || coords.length < 2) return;
         const lons = coords.map((p) => p[0]);
@@ -1579,7 +1660,7 @@ export default function MapView() {
         );
         setPickMode("none");
         setPendingWaypointIndex(null);
-        setMapCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
+        setProgrammaticCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
         writeQuery([startLon, startLat], [endLon, endLat]);
 
         const requestId = ++latestRouteReqRef.current;
@@ -1609,7 +1690,7 @@ export default function MapView() {
         setWaypointInputs([]);
         setPickMode("none");
         setPendingWaypointIndex(null);
-        setMapCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
+        setProgrammaticCenter({ lat: (startLat + endLat) / 2, lon: (startLon + endLon) / 2 });
         writeQuery([startLon, startLat], [endLon, endLat]);
 
         const requestId = ++latestRouteReqRef.current;
@@ -1644,7 +1725,7 @@ export default function MapView() {
       );
       setPickMode("none");
       setPendingWaypointIndex(null);
-      setMapCenter({ lat: (start.lat + end.lat) / 2, lon: (start.lon + end.lon) / 2 });
+      setProgrammaticCenter({ lat: (start.lat + end.lat) / 2, lon: (start.lon + end.lon) / 2 });
       // Zoom map to fit the full preset route area.
       const map = mapRef.current?.getMap();
       if (map) {
@@ -1837,14 +1918,8 @@ export default function MapView() {
         style={{ width: "100%", height: "100%" }}
         mapStyle="mapbox://styles/mapbox/light-v11"
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
-        onLoad={() => {
-          const pending = pendingGeoCenterRef.current;
-          if (!pending) return;
-          const map = mapRef.current?.getMap();
-          if (!map) return;
-          map.flyTo({ center: [pending.lon, pending.lat], zoom: Math.max(map.getZoom(), 12), duration: 800 });
-          pendingGeoCenterRef.current = null;
-        }}
+        onLoad={tryFlyToPendingGeoCenter}
+        onIdle={tryFlyToPendingGeoCenter}
         onMove={(evt) => {
           setMapCenter({ lat: evt.viewState.latitude, lon: evt.viewState.longitude });
           setZoom(evt.viewState.zoom);
@@ -2112,6 +2187,7 @@ export default function MapView() {
             mode={routeColorMode}
             weight={6}
             segmentMeters={segmentMeters}
+            zoom={zoom}
           />
         )}
 
@@ -2164,65 +2240,117 @@ export default function MapView() {
         )}
       </MapGL>
 
-      {/* Webcam toggle */}
-      {!isPhone && (
-        <div
-          style={{
-            position: "absolute",
-            left: 56,
-            top: 12,
-            zIndex: 1600,
+      <div style={{ ...panelIconDockStyle, top: isPhone ? 72 : 12 }}>
+        <button
+          onClick={() => {
+            setShowRoutingPanel((v) => {
+              const next = !v;
+              if (next) {
+                setShowDataPanel(false);
+                setShowElevation(false);
+              }
+              return next;
+            });
           }}
+          style={panelIconButtonStyle(showRoutingPanel)}
+          aria-label="Toggle route panel"
+          title="Route"
         >
-          <button onClick={() => setShowWebcams((v) => !v)} style={toggleButtonStyle}>
-            {showWebcams ? "Hide Webcams" : "Show Webcams"}
-          </button>
-        </div>
-      )}
-
-      {isPhone && (
-        <div style={{ position: "absolute", right: 8, top: 12, zIndex: 1700, display: "flex", gap: 6 }}>
-          <button onClick={() => setShowWebcams((v) => !v)} style={toggleButtonStyle}>
-            {showWebcams ? "Hide Webcams" : "Show Webcams"}
-          </button>
-          {!showElevation && (
-            <button onClick={() => setShowElevation(true)} style={toggleButtonStyle}>
-              Show Elevation
-            </button>
-          )}
-          <button onClick={() => setShowDataPanel((v) => !v)} style={toggleButtonStyle}>
-            {showDataPanel ? "Hide Legend" : "Legend"}
-          </button>
-          <button onClick={() => setShowRoutingPanel((v) => !v)} style={toggleButtonStyle}>
-            {showRoutingPanel ? "Hide Route" : "Route"}
-          </button>
-        </div>
-      )}
+          <span style={panelIconGlyphStyle} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 17c3-5 6-7 9-8" />
+              <path d="M13 9h6" />
+              <path d="M17 5l4 4-4 4" />
+              <circle cx="4" cy="17" r="1.5" />
+            </svg>
+          </span>
+        </button>
+        <button
+          onClick={() => {
+            setShowDataPanel((v) => {
+              const next = !v;
+              if (next) {
+                setShowRoutingPanel(false);
+                setShowElevation(false);
+              }
+              return next;
+            });
+          }}
+          style={panelIconButtonStyle(showDataPanel)}
+          aria-label="Toggle legend panel"
+          title="Legend"
+        >
+          <span style={panelIconGlyphStyle} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="5" width="5" height="5" rx="1" />
+              <rect x="10" y="5" width="5" height="5" rx="1" />
+              <rect x="16" y="5" width="4" height="5" rx="1" />
+              <rect x="4" y="13" width="8" height="6" rx="1" />
+              <rect x="13" y="13" width="7" height="6" rx="1" />
+            </svg>
+          </span>
+        </button>
+        <button
+          onClick={() => {
+            setShowElevation((v) => {
+              const next = !v;
+              if (next) {
+                setShowRoutingPanel(false);
+                setShowDataPanel(false);
+              }
+              return next;
+            });
+          }}
+          style={panelIconButtonStyle(showElevation)}
+          aria-label="Toggle elevation panel"
+          title="Elevation"
+        >
+          <span style={panelIconGlyphStyle} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 17 9 9l4 5 4-7 4 10" />
+            </svg>
+          </span>
+        </button>
+        <button
+          onClick={() => setShowWebcams((v) => !v)}
+          style={panelIconButtonStyle(showWebcams)}
+          aria-label="Toggle webcams"
+          title="Webcams"
+        >
+          <span style={panelIconGlyphStyle} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="7" width="12" height="10" rx="2" />
+              <path d="m15 10 6-3v10l-6-3" />
+            </svg>
+          </span>
+        </button>
+      </div>
 
       {/* Routing Panel */}
       {showRoutingPanel && (
         <div
           style={{
             position: "absolute",
-            right: isPhone ? 8 : 12,
-            left: "auto",
-            top: isPhone ? "auto" : 12,
-            bottom: isPhone ? 12 : "auto",
+            right: isPhone ? 8 : 132,
+            left: isPhone ? 8 : "auto",
+            top: isPhone ? 124 : 12,
+            bottom: "auto",
             zIndex: 1650,
           }}
         >
           <div
             style={{
               ...panelCardStyle,
-              width: isPhone ? "min(86vw, 320px)" : isTablet ? "min(42vw, 360px)" : "320px",
-              maxHeight: isPhone ? "38vh" : isTablet ? "46vh" : "50vh",
+              width: isPhone ? "auto" : isTablet ? "clamp(320px, 46vw, 440px)" : "380px",
+              maxHeight: isPhone ? "68vh" : isTablet ? "74vh" : "76vh",
               overflowY: "auto",
               overflowX: "hidden",
               overscrollBehavior: "contain",
+              padding: isPhone ? "10px 12px" : panelCardStyle.padding,
             }}
           >
             <div style={{ ...panelHeaderStyle, marginBottom: 8 }}>
-              <span style={{ fontWeight: 600 }}>Routing Panel</span>
+              <span style={{ fontWeight: 700 }}>Route Planner</span>
               <button onClick={() => setShowRoutingPanel(false)} style={closeButtonStyle} aria-label="Close routing panel">
                 ✖
               </button>
@@ -2294,26 +2422,18 @@ export default function MapView() {
           </div>
         </div>
       )}
-      {!showRoutingPanel && !isPhone && (
-        <div style={{ position: "absolute", right: 12, top: 12, zIndex: 1650 }}>
-          <button onClick={() => setShowRoutingPanel(true)} style={toggleButtonStyle}>
-            Show Routing
-          </button>
-        </div>
-      )}
-
       {/* Data Panels */}
-      {(!isPhone || showDataPanel) && (
+      {showDataPanel && (
         <div
           style={{
             position: "absolute",
-            right: isPhone ? 8 : 12,
-            left: "auto",
-            top: isPhone ? 58 : "auto",
-            bottom: isPhone ? "auto" : 12,
+            right: isPhone ? 8 : 132,
+            left: isPhone ? 8 : "auto",
+            top: isPhone ? 124 : 12,
+            bottom: "auto",
             zIndex: 1660,
-            width: isPhone ? "min(82vw, 300px)" : isTablet ? "min(38vw, 320px)" : "300px",
-            maxHeight: isPhone ? "34vh" : isTablet ? "44vh" : "38vh",
+            width: isPhone ? "auto" : isTablet ? "min(44vw, 380px)" : "340px",
+            maxHeight: isPhone ? "60vh" : isTablet ? "66vh" : "64vh",
             overflowY: "auto",
             display: "flex",
             flexDirection: "column",
@@ -2330,54 +2450,75 @@ export default function MapView() {
         </div>
       )}
 
-      {/* Dedicated elevation panel for all devices */}
-      {!isPhone && (
-        <div style={{ position: "absolute", left: 56, bottom: 12, zIndex: 1670 }}>
-          {!showElevation && (
-            <button onClick={() => setShowElevation(true)} style={toggleButtonStyle}>
-              Show Elevation
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Dedicated elevation panel for all devices */}
-      <div
-        style={{
-          position: "absolute",
-          left: isPhone ? "auto" : 12,
-          right: isPhone ? 8 : "auto",
-          bottom: isPhone ? (showRoutingPanel ? "40vh" : 12) : 12,
-          zIndex: 1665,
-          width: isPhone
-            ? "clamp(220px, 78vw, 320px)"
-            : isTablet
-              ? "clamp(280px, 40vw, 420px)"
-              : "clamp(320px, 30vw, 460px)",
-        }}
-      >
-          {showElevation ? (
+      {showElevation && (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            top: "auto",
+            zIndex: 1665,
+            width: "100%",
+          }}
+        >
+          <div
+            style={{
+              background: "rgba(2,6,23,0.94)",
+              borderTop: "1px solid rgba(148,163,184,0.35)",
+              boxShadow: "0 -8px 24px rgba(2,6,23,0.45)",
+              padding: isPhone ? "8px 10px 10px" : "8px 12px 12px",
+              height: isPhone ? "30vh" : isTablet ? "27vh" : "25vh",
+              minHeight: isPhone ? 170 : 180,
+              display: "grid",
+              gridTemplateColumns: isPhone ? "1fr" : "220px 1fr",
+              gap: 10,
+              alignItems: "stretch",
+            }}
+          >
             <div
               style={{
-                ...panelCardStyle,
-                padding: 6,
-                maxHeight: isPhone ? "34vh" : isTablet ? "30vh" : "34vh",
-                overflowY: "auto",
-                minWidth: 0,
-                width: "100%",
+                color: "#e2e8f0",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "flex-start",
+                gap: 8,
+                paddingLeft: isPhone ? 42 : 12,
+                paddingBottom: isPhone ? 0 : 56,
+                borderRight: isPhone ? "none" : "1px solid rgba(148,163,184,0.2)",
+                paddingRight: isPhone ? 0 : 8,
               }}
             >
-              <div style={panelHeaderStyle}>
-                <span style={{ fontWeight: 600 }}>Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}</span>
-                <button onClick={() => setShowElevation(false)} style={closeButtonStyle} aria-label="Close elevation panel">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>
+                  Elevation {elevPts.length > 0 ? `(${elevPts.length})` : ""}
+                </span>
+                <button
+                  onClick={() => setShowElevation(false)}
+                  style={{ ...closeButtonStyle, width: 20, height: 20, lineHeight: "18px" }}
+                  aria-label="Close elevation panel"
+                >
                   ✖
                 </button>
               </div>
-              <div style={{ fontSize: 11, color: "#999", borderBottom: "1px solid #e5e7eb", paddingBottom: 4, marginBottom: 4 }}>
-                Points: {elevPts.length} | Valid: {elevPts.filter((p) => typeof p.elevation === "number").length}
+              <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.35, marginTop: 4 }}>
+                <div>Points: {elevPts.length}</div>
+                <div>Valid: {elevationStats.valid}</div>
+                <div>Min: {elevationStats.min == null ? "-" : elevationStats.min.toFixed(0)} m</div>
+                <div>Max: {elevationStats.max == null ? "-" : elevationStats.max.toFixed(0)} m</div>
               </div>
+            </div>
+            <div style={{ minWidth: 0, minHeight: 0 }}>
               {elevPts.length === 0 ? (
-                <div style={{ fontSize: 12, color: "#666", padding: "8px 0" }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#94a3b8",
+                    height: "100%",
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                >
                   No elevation data. Draw a route to see the elevation profile.
                 </div>
               ) : (
@@ -2399,8 +2540,9 @@ export default function MapView() {
                 />
               )}
             </div>
-          ) : null}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

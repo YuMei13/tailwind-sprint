@@ -78,6 +78,16 @@ export default function ElevationPanel({
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const lastSentIdxRef = useRef<number | null>(null);
+  const hoverIdxRef = useRef<number | null>(null);
+  const onHoverRef = useRef<Props["onHover"]>(onHover);
+
+  useEffect(() => {
+    hoverIdxRef.current = hoverIdx;
+  }, [hoverIdx]);
+
+  useEffect(() => {
+    onHoverRef.current = onHover;
+  }, [onHover]);
 
   const W = chartWidth, H = 230;
   const Pleft = 60, Pright = 25, Ptop = 25, Pbottom = 45;
@@ -107,15 +117,21 @@ export default function ElevationPanel({
       : null;
 
   useEffect(() => {
-    if (points.length < 2){
-      setHoverX(null);
-      setHoverIdx(null);
+    if (points.length < 2) {
+      if (hoverX !== null) setHoverX(null);
+      if (hoverIdxRef.current !== null) {
+        hoverIdxRef.current = null;
+        setHoverIdx(null);
+      }
     }
     if (!ready || hoverDist == null) {
-      if (hoverIdx !== null) setHoverIdx(null);
+      if (hoverIdxRef.current !== null) {
+        hoverIdxRef.current = null;
+        setHoverIdx(null);
+      }
       if (lastSentIdxRef.current !== null) {
         lastSentIdxRef.current = null;
-        onHover?.(null, null);
+        onHoverRef.current?.(null, null);
       }
       return;
     }
@@ -128,13 +144,16 @@ export default function ElevationPanel({
         best = i;
       }
     }
-    if (hoverIdx !== best) setHoverIdx(best);
+    if (hoverIdxRef.current !== best) {
+      hoverIdxRef.current = best;
+      setHoverIdx(best);
+    }
     if (lastSentIdxRef.current !== best) {
       lastSentIdxRef.current = best;
       const origIdx = series.mapIdx[best];
-      onHover?.(points[origIdx], origIdx);
+      onHoverRef.current?.(points[origIdx], origIdx);
     }
-  }, [hoverDist, hoverX, ready, points, series, hoverIdx, onHover]);
+  }, [hoverDist, hoverX, ready, points, series]);
 
   // === 4. 刻度 ===
   const kmTotal = series.total / 1000;

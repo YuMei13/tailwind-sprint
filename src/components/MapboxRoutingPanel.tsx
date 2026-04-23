@@ -558,7 +558,7 @@ export default function MapboxRoutingPanel({
             padding: 8,
           }}
         >
-          <div style={{ ...box.label, marginBottom: 6 }}>台北熱門自行車路線</div>
+          <div style={{ ...box.label, marginBottom: 6 }}>熱門自行車路線</div>
           <select
             value={selectedPresetId}
             onChange={(e) => setSelectedPresetId(e.target.value)}
