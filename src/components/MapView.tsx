@@ -1,7 +1,7 @@
 // src/components/MapView.tsx
 "use client";
 
-import MapGL, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
+import MapGL, { Marker, NavigationControl, MapRef, Popup } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MapMouseEvent } from "mapbox-gl";
@@ -717,6 +717,28 @@ export default function MapView() {
     borderLeft: "6px solid transparent",
     borderRight: "6px solid transparent",
     borderTop: "8px solid #0284c7",
+  };
+  const riderMarkerStyle: React.CSSProperties = {
+    width: 30,
+    height: 30,
+    display: "grid",
+    placeItems: "center",
+    filter: "drop-shadow(0 1px 2px rgba(15,23,42,0.45))",
+    pointerEvents: "none",
+  };
+  const riderMarkerFocusStyle: React.CSSProperties = {
+    ...riderMarkerStyle,
+    width: 34,
+    height: 34,
+    filter: "drop-shadow(0 1px 3px rgba(13,148,136,0.55))",
+  };
+  const riderIconImageStyle: React.CSSProperties = {
+    width: "100%",
+    height: "100%",
+    backgroundImage: "url('/bmx.png')",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "center",
+    backgroundSize: "contain",
   };
 
   // === State ===
@@ -2193,50 +2215,20 @@ export default function MapView() {
 
         {/* Cursor highlight */}
         {cursorPt && (
-          <Source
-            id="cursor-point"
-            type="geojson"
-            data={{
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [cursorPt.lon, cursorPt.lat] },
-              properties: {},
-            }}
-          >
-            <Layer
-              id="cursor-point-layer"
-              type="circle"
-              paint={{
-                "circle-radius": 6,
-                "circle-color": "#a5b4fc",
-                "circle-stroke-color": "#6366f1",
-                "circle-stroke-width": 2,
-              }}
-            />
-          </Source>
+          <Marker longitude={cursorPt.lon} latitude={cursorPt.lat} anchor="center">
+            <div style={riderMarkerStyle} aria-label="Route cursor">
+              <div style={riderIconImageStyle} />
+            </div>
+          </Marker>
         )}
 
         {/* Focus highlight */}
         {focusPt && (
-          <Source
-            id="focus-point"
-            type="geojson"
-            data={{
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [focusPt.lon, focusPt.lat] },
-              properties: {},
-            }}
-          >
-            <Layer
-              id="focus-point-layer"
-              type="circle"
-              paint={{
-                "circle-radius": 7,
-                "circle-color": "#60a5fa",
-                "circle-stroke-color": "#1d4ed8",
-                "circle-stroke-width": 3,
-              }}
-            />
-          </Source>
+          <Marker longitude={focusPt.lon} latitude={focusPt.lat} anchor="center">
+            <div style={riderMarkerFocusStyle} aria-label="Route focus">
+              <div style={riderIconImageStyle} />
+            </div>
+          </Marker>
         )}
       </MapGL>
 

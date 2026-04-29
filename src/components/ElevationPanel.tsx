@@ -307,12 +307,9 @@ export default function ElevationPanel({
               stroke="#6366f1"
               strokeDasharray="4 3"
             />
-            <circle
-              cx={x(series.dist[displayHoverIdx])}
-              cy={y(series.elev[displayHoverIdx])}
-              r={3}
-              fill="#3b82f6"
-            />
+            <g transform={`translate(${x(series.dist[displayHoverIdx]) - 15}, ${y(series.elev[displayHoverIdx]) - 15})`}>
+              <image href="/bmx.png" x="0" y="0" width="30" height="30" />
+            </g>
             </>
           )}
         </svg>
