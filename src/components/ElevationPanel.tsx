@@ -82,14 +82,26 @@ export default function ElevationPanel({
   const lastSentIdxRef = useRef<number | null>(null);
   const hoverIdxRef = useRef<number | null>(null);
   const onHoverRef = useRef<Props["onHover"]>(onHover);
+  const hoverXRef = useRef<number | null>(null);
+  const hoverRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     hoverIdxRef.current = hoverIdx;
   }, [hoverIdx]);
 
   useEffect(() => {
+    hoverXRef.current = hoverX;
+  }, [hoverX]);
+
+  useEffect(() => {
     onHoverRef.current = onHover;
   }, [onHover]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverRafRef.current != null) cancelAnimationFrame(hoverRafRef.current);
+    };
+  }, []);
 
   const W = chartWidth, H = compact ? 170 : 230;
   const Pleft = compact ? 52 : 60;
@@ -225,9 +237,21 @@ export default function ElevationPanel({
           onMouseMove={(e) => {
             const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
             const xPos = e.clientX - rect.left;
-            setHoverX(xPos);
+            const clampedX = Math.max(Pleft, Math.min(W - Pright, xPos));
+            if (hoverRafRef.current != null) cancelAnimationFrame(hoverRafRef.current);
+            hoverRafRef.current = requestAnimationFrame(() => {
+              hoverRafRef.current = null;
+              const prev = hoverXRef.current;
+              if (prev == null || Math.abs(prev - clampedX) > 0.5) {
+                setHoverX(clampedX);
+              }
+            });
           }}
           onMouseLeave={() => {
+            if (hoverRafRef.current != null) {
+              cancelAnimationFrame(hoverRafRef.current);
+              hoverRafRef.current = null;
+            }
             setHoverX(null);
           }}
           onClick={() => {
