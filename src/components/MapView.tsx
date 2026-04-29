@@ -2445,13 +2445,14 @@ export default function MapView() {
       {showElevation && (
         <div
           style={{
-            position: "absolute",
+            position: "fixed",
             left: 0,
             right: 0,
             bottom: 0,
             top: "auto",
             zIndex: 1665,
             width: "100%",
+            pointerEvents: "none",
           }}
         >
           <div
@@ -2459,13 +2460,15 @@ export default function MapView() {
               background: "rgba(2,6,23,0.94)",
               borderTop: "1px solid rgba(148,163,184,0.35)",
               boxShadow: "0 -8px 24px rgba(2,6,23,0.45)",
-              padding: isPhone ? "8px 10px 10px" : "8px 12px 12px",
-              height: isPhone ? "30vh" : isTablet ? "27vh" : "25vh",
-              minHeight: isPhone ? 170 : 180,
+              padding: isPhone ? "8px 10px calc(10px + env(safe-area-inset-bottom))" : "8px 12px 12px",
+              height: isPhone ? "36vh" : isTablet ? "30vh" : "28vh",
+              minHeight: isPhone ? 210 : 220,
               display: "grid",
               gridTemplateColumns: isPhone ? "1fr" : "220px 1fr",
               gap: 10,
               alignItems: "stretch",
+              pointerEvents: "auto",
+              overflow: "hidden",
             }}
           >
             <div
@@ -2500,7 +2503,7 @@ export default function MapView() {
                 <div>Max: {elevationStats.max == null ? "-" : elevationStats.max.toFixed(0)} m</div>
               </div>
             </div>
-            <div style={{ minWidth: 0, minHeight: 0 }}>
+            <div style={{ minWidth: 0, minHeight: 0, overflow: "hidden" }}>
               {elevPts.length === 0 ? (
                 <div
                   style={{
@@ -2516,6 +2519,7 @@ export default function MapView() {
               ) : (
                 <ElevationPanel
                   points={elevPts as ElevPt[]}
+                  compact
                   selectedIndex={focusIdx}
                   externalHoverIndex={panelHoverIdx}
                   onHover={(pt) => {

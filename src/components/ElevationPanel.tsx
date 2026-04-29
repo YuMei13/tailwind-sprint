@@ -11,6 +11,7 @@ type Props = {
   onClick?: (pt: ElevPt | null, index: number | null) => void;
   selectedIndex?: number | null;
   externalHoverIndex?: number | null;
+  compact?: boolean;
 };
 
 export default function ElevationPanel({
@@ -20,6 +21,7 @@ export default function ElevationPanel({
   onClick,
   selectedIndex = null,
   externalHoverIndex = null,
+  compact = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [chartWidth, setChartWidth] = useState<number>(580);
@@ -89,8 +91,11 @@ export default function ElevationPanel({
     onHoverRef.current = onHover;
   }, [onHover]);
 
-  const W = chartWidth, H = 230;
-  const Pleft = 60, Pright = 25, Ptop = 25, Pbottom = 45;
+  const W = chartWidth, H = compact ? 170 : 230;
+  const Pleft = compact ? 52 : 60;
+  const Pright = compact ? 18 : 25;
+  const Ptop = compact ? 18 : 25;
+  const Pbottom = compact ? 34 : 45;
   const ready = series.dist.length >= 2;
 
   const x = useCallback(
@@ -200,7 +205,7 @@ export default function ElevationPanel({
         background: "rgba(255,255,255,0.95)",
         borderRadius: 8,
         boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        padding: 16,
+        padding: compact ? 10 : 16,
         fontSize: 12,
         color: "#1e293b",
       }}
@@ -211,7 +216,7 @@ export default function ElevationPanel({
         onLeave?.();
       }}
     >
-      <div style={{ fontWeight: 700, marginBottom: 6 }}>Elevation (m)</div>
+      <div style={{ fontWeight: 700, marginBottom: compact ? 4 : 6 }}>Elevation (m)</div>
 
       {ready ? (
         <svg
@@ -266,7 +271,7 @@ export default function ElevationPanel({
                   y={H - Pbottom + (isZero ? 22 : 18)}
                   textAnchor="middle"
                   fill="#334155"
-                  fontSize={10}
+                  fontSize={compact ? 9 : 10}
                 >
                   {val.toFixed(1)} km
                 </text>
@@ -274,7 +279,7 @@ export default function ElevationPanel({
             );
           })}
 
-          <text x={W / 2} y={H - 4} textAnchor="middle" fill="#334155" fontSize={11}>
+          <text x={W / 2} y={H - 4} textAnchor="middle" fill="#334155" fontSize={compact ? 10 : 11}>
             Distance (km)
           </text>
 
@@ -317,7 +322,7 @@ export default function ElevationPanel({
         <div style={{ textAlign: "center", color: "#64748b" }}>No elevation data</div>
       )}
 
-      <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+      <div style={{ display: "flex", gap: compact ? 8 : 12, marginTop: compact ? 4 : 6, flexWrap: "wrap" }}>
         <span>Min: {minStr} m</span>
         <span>Max: {maxStr} m</span>
         <span>Gain: {(series.max - series.min).toFixed(0)} m</span>
