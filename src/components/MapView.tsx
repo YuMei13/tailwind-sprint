@@ -1,7 +1,7 @@
 // src/components/MapView.tsx
 "use client";
 
-import MapGL, { Marker, Source, Layer, NavigationControl, MapRef, Popup } from "react-map-gl";
+import MapGL, { Marker, NavigationControl, MapRef, Popup } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MapMouseEvent } from "mapbox-gl";
@@ -717,6 +717,28 @@ export default function MapView() {
     borderLeft: "6px solid transparent",
     borderRight: "6px solid transparent",
     borderTop: "8px solid #0284c7",
+  };
+  const riderMarkerStyle: React.CSSProperties = {
+    width: 30,
+    height: 30,
+    display: "grid",
+    placeItems: "center",
+    filter: "drop-shadow(0 1px 2px rgba(15,23,42,0.45))",
+    pointerEvents: "none",
+  };
+  const riderMarkerFocusStyle: React.CSSProperties = {
+    ...riderMarkerStyle,
+    width: 34,
+    height: 34,
+    filter: "drop-shadow(0 1px 3px rgba(13,148,136,0.55))",
+  };
+  const riderIconImageStyle: React.CSSProperties = {
+    width: "100%",
+    height: "100%",
+    backgroundImage: "url('/bmx.png')",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "center",
+    backgroundSize: "contain",
   };
 
   // === State ===
@@ -2193,50 +2215,20 @@ export default function MapView() {
 
         {/* Cursor highlight */}
         {cursorPt && (
-          <Source
-            id="cursor-point"
-            type="geojson"
-            data={{
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [cursorPt.lon, cursorPt.lat] },
-              properties: {},
-            }}
-          >
-            <Layer
-              id="cursor-point-layer"
-              type="circle"
-              paint={{
-                "circle-radius": 6,
-                "circle-color": "#a5b4fc",
-                "circle-stroke-color": "#6366f1",
-                "circle-stroke-width": 2,
-              }}
-            />
-          </Source>
+          <Marker longitude={cursorPt.lon} latitude={cursorPt.lat} anchor="center">
+            <div style={riderMarkerStyle} aria-label="Route cursor">
+              <div style={riderIconImageStyle} />
+            </div>
+          </Marker>
         )}
 
         {/* Focus highlight */}
         {focusPt && (
-          <Source
-            id="focus-point"
-            type="geojson"
-            data={{
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [focusPt.lon, focusPt.lat] },
-              properties: {},
-            }}
-          >
-            <Layer
-              id="focus-point-layer"
-              type="circle"
-              paint={{
-                "circle-radius": 7,
-                "circle-color": "#60a5fa",
-                "circle-stroke-color": "#1d4ed8",
-                "circle-stroke-width": 3,
-              }}
-            />
-          </Source>
+          <Marker longitude={focusPt.lon} latitude={focusPt.lat} anchor="center">
+            <div style={riderMarkerFocusStyle} aria-label="Route focus">
+              <div style={riderIconImageStyle} />
+            </div>
+          </Marker>
         )}
       </MapGL>
 
@@ -2453,13 +2445,14 @@ export default function MapView() {
       {showElevation && (
         <div
           style={{
-            position: "absolute",
+            position: "fixed",
             left: 0,
             right: 0,
             bottom: 0,
             top: "auto",
             zIndex: 1665,
             width: "100%",
+            pointerEvents: "none",
           }}
         >
           <div
@@ -2467,13 +2460,15 @@ export default function MapView() {
               background: "rgba(2,6,23,0.94)",
               borderTop: "1px solid rgba(148,163,184,0.35)",
               boxShadow: "0 -8px 24px rgba(2,6,23,0.45)",
-              padding: isPhone ? "8px 10px 10px" : "8px 12px 12px",
-              height: isPhone ? "30vh" : isTablet ? "27vh" : "25vh",
-              minHeight: isPhone ? 170 : 180,
+              padding: isPhone ? "8px 10px calc(10px + env(safe-area-inset-bottom))" : "8px 12px 12px",
+              height: isPhone ? "36vh" : isTablet ? "30vh" : "28vh",
+              minHeight: isPhone ? 210 : 220,
               display: "grid",
               gridTemplateColumns: isPhone ? "1fr" : "220px 1fr",
               gap: 10,
               alignItems: "stretch",
+              pointerEvents: "auto",
+              overflow: "hidden",
             }}
           >
             <div
@@ -2508,7 +2503,7 @@ export default function MapView() {
                 <div>Max: {elevationStats.max == null ? "-" : elevationStats.max.toFixed(0)} m</div>
               </div>
             </div>
-            <div style={{ minWidth: 0, minHeight: 0 }}>
+            <div style={{ minWidth: 0, minHeight: 0, overflow: "hidden" }}>
               {elevPts.length === 0 ? (
                 <div
                   style={{
@@ -2524,6 +2519,7 @@ export default function MapView() {
               ) : (
                 <ElevationPanel
                   points={elevPts as ElevPt[]}
+                  compact
                   selectedIndex={focusIdx}
                   externalHoverIndex={panelHoverIdx}
                   onHover={(pt) => {

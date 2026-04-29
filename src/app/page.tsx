@@ -4,13 +4,42 @@
 
 "use client";
 import dynamic from "next/dynamic";
+import Image from "next/image";
+import { useEffect, useState } from "react";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
 export default function HomePage() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setShowSplash(false), 2000);
+    return () => window.clearTimeout(t);
+  }, []);
+
   return (
     <main style={{ height: "100dvh", width: "100%" }}>
-      <MapView />
+      {showSplash ? (
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            height: "100%",
+            background: "#ffffff",
+          }}
+        >
+          <Image
+            src="/soonla-splash.jpg"
+            alt="Soonla splash"
+            fill
+            priority
+            unoptimized
+            style={{ objectFit: "cover" }}
+          />
+        </div>
+      ) : (
+        <MapView />
+      )}
     </main>
   );
 }
