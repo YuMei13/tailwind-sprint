@@ -777,6 +777,7 @@ export default function MapView() {
   const [showRoutingPanel, setShowRoutingPanel] = useState(false);
   const [showDataPanel, setShowDataPanel] = useState(false);
   const [routeColorMode, setRouteColorMode] = useState<"wind" | "slope">("wind");
+  const [windForecastLocal, setWindForecastLocal] = useState<string>("");
   const [viewportWidth, setViewportWidth] = useState(1200);
   const [, setRouteDebug] = useState<RouteDebug | null>(null);
   const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
@@ -958,6 +959,13 @@ export default function MapView() {
     const p = elevPts[focusIdx];
     return typeof p.lat === "number" && typeof p.lon === "number" ? { lat: p.lat, lon: p.lon } : null;
   }, [focusIdx, elevPts]);
+
+  const forecastIsoUtc = useMemo(() => {
+    if (!windForecastLocal) return undefined;
+    const t = Date.parse(windForecastLocal);
+    if (!Number.isFinite(t)) return undefined;
+    return new Date(t).toISOString();
+  }, [windForecastLocal]);
 
   const elevationStats = useMemo(() => {
     const vals = elevPts
@@ -1198,7 +1206,7 @@ export default function MapView() {
       const windData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ points: firstSample }),
+        body: JSON.stringify({ points: firstSample, forecastIsoUtc }),
         timeoutMs: 30000,
       });
       windPoints = Array.isArray(windData.points) ? windData.points : [];
@@ -1216,7 +1224,7 @@ export default function MapView() {
         const retryData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind?nocache=1", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ points: retrySample }),
+          body: JSON.stringify({ points: retrySample, forecastIsoUtc }),
           timeoutMs: 30000,
         });
         const retryPoints = Array.isArray(retryData.points) ? retryData.points : [];
@@ -1240,7 +1248,7 @@ export default function MapView() {
           const singleData = await fetchJSON<{ points?: WindPoint[] }>("/api/wind?nocache=1", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ points: [mid] }),
+            body: JSON.stringify({ points: [mid], forecastIsoUtc }),
             timeoutMs: 30000,
           });
           const single = (Array.isArray(singleData.points) ? singleData.points : []).find(
@@ -1859,6 +1867,14 @@ export default function MapView() {
   }, [route.length]);
 
   useEffect(() => {
+    if (route.length < 2) return;
+    const requestId = ++latestRouteReqRef.current;
+    const lonLat = route.map(([lat, lon]) => [lon, lat] as LonLat);
+    void applyRouteFromLonLat(lonLat, { source: "planned", incomingCount: lonLat.length }, requestId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forecastIsoUtc]);
+
+  useEffect(() => {
     if (!showWebcams) {
       setWebcams([]);
       setActiveWebcam(null);
@@ -2450,6 +2466,54 @@ export default function MapView() {
           }}
         >
           <div style={{ fontSize: 12, color: "#1e293b", width: "100%" }}>
+            <div
+              style={{
+                background: "rgba(255,255,255,0.94)",
+                borderRadius: 8,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.14)",
+                padding: "8px 10px",
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", marginBottom: 6 }}>
+                Wind Forecast Time
+              </div>
+              <input
+                type="datetime-local"
+                value={windForecastLocal}
+                onChange={(e) => setWindForecastLocal(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  border: "1px solid #cbd5e1",
+                  fontSize: 12,
+                  color: "#0f172a",
+                  background: "#fff",
+                }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setWindForecastLocal("")}
+                  style={{
+                    padding: "5px 8px",
+                    borderRadius: 6,
+                    border: "1px solid #cbd5e1",
+                    background: "#f8fafc",
+                    color: "#334155",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Use Current
+                </button>
+                <span style={{ fontSize: 11, color: "#64748b", alignSelf: "center" }}>
+                  {forecastIsoUtc ? "Using selected time" : "Using live wind"}
+                </span>
+              </div>
+            </div>
             <WindLegend
               mode={routeColorMode}
               onToggleMode={() => setRouteColorMode((prev) => (prev === "wind" ? "slope" : "wind"))}
