@@ -37,13 +37,46 @@ async function mapWithConcurrency<T, R>(
   return out;
 }
 
-async function fetchWind(lat: number, lon: number, timeoutMs = 12000) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms`;
+async function fetchWind(
+  lat: number,
+  lon: number,
+  forecastIsoUtc?: string,
+  timeoutMs = 12000
+) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=wind_speed_10m,wind_direction_10m&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=UTC&forecast_days=16`;
   const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`OpenMeteo ${res.status}`);
-  const j = (await res.json()) as { current?: { wind_speed_10m?: number; wind_direction_10m?: number } };
-  const sp = j.current?.wind_speed_10m ?? null; // m/s
-  const dir = j.current?.wind_direction_10m ?? null; // deg
+  const j = (await res.json()) as {
+    current?: { wind_speed_10m?: number; wind_direction_10m?: number };
+    hourly?: { time?: string[]; wind_speed_10m?: number[]; wind_direction_10m?: number[] };
+  };
+  let sp = j.current?.wind_speed_10m ?? null; // m/s
+  let dir = j.current?.wind_direction_10m ?? null; // deg
+  if (forecastIsoUtc && j.hourly?.time?.length) {
+    const times = j.hourly.time;
+    const speeds = j.hourly.wind_speed_10m ?? [];
+    const dirs = j.hourly.wind_direction_10m ?? [];
+    const target = Date.parse(forecastIsoUtc);
+    if (Number.isFinite(target)) {
+      let bestIdx = -1;
+      let bestDelta = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < times.length; i++) {
+        const t = Date.parse(times[i]);
+        if (!Number.isFinite(t)) continue;
+        const delta = Math.abs(t - target);
+        if (delta < bestDelta) {
+          bestDelta = delta;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0) {
+        const s = speeds[bestIdx];
+        const d = dirs[bestIdx];
+        if (typeof s === "number" && Number.isFinite(s)) sp = s;
+        if (typeof d === "number" && Number.isFinite(d)) dir = d;
+      }
+    }
+  }
   const speedMs = sp != null ? Math.round(sp * 10) / 10 : undefined;
   return {
     speedMs,
@@ -54,13 +87,13 @@ async function fetchWind(lat: number, lon: number, timeoutMs = 12000) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { points } = (await req.json()) as { points?: LatLon[] }; // [lat,lon]
+    const { points, forecastIsoUtc } = (await req.json()) as { points?: LatLon[]; forecastIsoUtc?: string }; // [lat,lon]
     if (!points || points.length === 0) return NextResponse.json({ points: [] });
 
     // 以「UTC 小時」做分桶，避免跨時段混用
-    const now = new Date();
+    const now = forecastIsoUtc ? new Date(forecastIsoUtc) : new Date();
     const hourKey = `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}-${now.getUTCHours()}`;
-    const key = buildKey("wind", { points, hourKey, unit: "ms", v: 2 });
+    const key = buildKey("wind", { points, hourKey, unit: "ms", forecastIsoUtc: forecastIsoUtc ?? "", v: 3 });
     const nocache = req.nextUrl.searchParams.get("nocache") === "1";
 
     const data = await cacheFetchJSON<{ points: WindPoint[] }>(
@@ -72,7 +105,7 @@ export async function POST(req: NextRequest) {
           6,
           async ([lat, lon]) => {
             try {
-              const w = await fetchWind(lat, lon, 12000);
+              const w = await fetchWind(lat, lon, forecastIsoUtc, 12000);
               return { lat, lon, ...w } satisfies WindPoint;
             } catch (e) {
               const msg = e instanceof Error ? e.message : "fetch failed";
