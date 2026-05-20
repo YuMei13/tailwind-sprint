@@ -235,6 +235,11 @@ function parseSource(v: string | null): SourceOpt {
   return "both";
 }
 
+function roundForCache(v: number, digits: number) {
+  const f = 10 ** digits;
+  return Math.round(v * f) / f;
+}
+
 export async function GET(req: NextRequest) {
   const u = new URL(req.url);
   const lat = Number(u.searchParams.get("lat") ?? "25.047");
@@ -253,7 +258,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing WINDY_WEBCAMS_KEY" }, { status: 500 });
   }
 
-  const key = buildKey("webcams", { lat, lon, radiusKm, limit, source, id: id ?? "" });
+  const key = buildKey("webcams", {
+    lat: roundForCache(lat, 4),
+    lon: roundForCache(lon, 4),
+    radiusKm: roundForCache(radiusKm, 2),
+    limit,
+    source,
+    id: id ?? "",
+  });
   const payload = await cacheFetchJSON<{ center: { lat: number; lon: number }; items: WebcamItem[]; source: SourceOpt }>(
     key,
     120,

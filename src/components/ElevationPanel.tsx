@@ -204,6 +204,24 @@ export default function ElevationPanel({
   }, [ready, externalHoverIndex, series.mapIdx]);
 
   const displayHoverIdx = hoverX != null ? hoverIdx : (externalHoverInnerIdx ?? hoverIdx);
+  const hoverTiltDeg = useMemo(() => {
+    if (!ready || displayHoverIdx == null) return 0;
+    const i0 = Math.max(0, displayHoverIdx - 1);
+    const i1 = Math.min(series.dist.length - 1, displayHoverIdx + 1);
+    if (i0 === i1) return 0;
+
+    // Use on-screen tangent so rotation always matches the displayed elevation profile.
+    const dx = x(series.dist[i1]) - x(series.dist[i0]);
+    const dy = y(series.elev[i1]) - y(series.elev[i0]);
+    if (!Number.isFinite(dx) || Math.abs(dx) < 1e-6 || !Number.isFinite(dy)) return 0;
+
+    // In SVG/screen coordinates, positive angle rotates clockwise.
+    // Convert tangent to a very obvious rider tilt with a minimum visible angle.
+    const tangentDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const sign = tangentDeg === 0 ? 0 : tangentDeg > 0 ? 1 : -1;
+    const magnitude = Math.min(32, Math.max(8, Math.abs(tangentDeg) * 1.6));
+    return sign * magnitude;
+  }, [displayHoverIdx, ready, series.dist, series.elev, x, y]);
 
   const km = (series.total / 1000).toFixed(2);
   const minStr = series.min.toFixed(0);
@@ -336,8 +354,8 @@ export default function ElevationPanel({
               stroke="#6366f1"
               strokeDasharray="4 3"
             />
-            <g transform={`translate(${x(series.dist[displayHoverIdx]) - 15}, ${y(series.elev[displayHoverIdx]) - 15})`}>
-              <image href="/bmx.png" x="0" y="0" width="30" height="30" />
+            <g transform={`translate(${x(series.dist[displayHoverIdx])}, ${y(series.elev[displayHoverIdx])}) rotate(${hoverTiltDeg})`}>
+              <image href="/bmx.png" x="-15" y="-15" width="30" height="30" />
             </g>
             </>
           )}

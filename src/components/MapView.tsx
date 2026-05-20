@@ -54,6 +54,7 @@ type RouteDebug = {
   message?: string;
 };
 const WEBCAM_RADIUS_KM = 0.5;
+const WEBCAM_CLIENT_CACHE_TTL_MS = 60000;
 const ROUTE_CACHE_PREFIX = "ts-route-cache:v10:";
 const ROUTE_API_CACHE_PREFIX = "ts-route-api-cache:v1:";
 
@@ -787,6 +788,9 @@ export default function MapView() {
   const routeApiCacheRef = useRef<Map<string, LonLat[]>>(new Map());
   const pendingGeoCenterRef = useRef<{ lat: number; lon: number } | null>(null);
   const didAutoCenterToUserRef = useRef(false);
+  const webcamQueryCacheRef = useRef<
+    Map<string, { at: number; items: WebcamItem[] }>
+  >(new Map());
 
   const mapRef = useRef<MapRef | null>(null);
   const isPhone = viewportWidth < 768;
@@ -814,6 +818,21 @@ export default function MapView() {
     },
     [isPhone]
   );
+
+  const fetchWebcamsWithClientCache = useCallback(async (params: URLSearchParams) => {
+    const key = params.toString();
+    const now = Date.now();
+    const hit = webcamQueryCacheRef.current.get(key);
+    if (hit && now - hit.at < WEBCAM_CLIENT_CACHE_TTL_MS) return hit.items;
+    const j = await fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${key}`, { timeoutMs: 12000 });
+    const items = j.items ?? [];
+    webcamQueryCacheRef.current.set(key, { at: now, items });
+    if (webcamQueryCacheRef.current.size > 120) {
+      const oldestKey = webcamQueryCacheRef.current.keys().next().value as string | undefined;
+      if (oldestKey) webcamQueryCacheRef.current.delete(oldestKey);
+    }
+    return items;
+  }, []);
 
   const tryFlyToPendingGeoCenter = useCallback(() => {
     if (didAutoCenterToUserRef.current) return;
@@ -1853,8 +1872,7 @@ export default function MapView() {
         radiusKm: String(WEBCAM_RADIUS_KM),
         limit: "30",
       });
-      const j = await fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 });
-      return j.items ?? [];
+      return fetchWebcamsWithClientCache(p);
     };
 
     const fetchAroundRoute = async () => {
@@ -1869,8 +1887,7 @@ export default function MapView() {
               radiusKm: String(radiusKm),
               limit: "30",
             });
-            const j = await fetchJSON<{ items?: WebcamItem[] }>(`/api/webcams?${p.toString()}`, { timeoutMs: 12000 });
-            return j.items ?? [];
+            return fetchWebcamsWithClientCache(p);
           })
         );
         const merged = new globalThis.Map<string, WebcamItem>();
@@ -1926,7 +1943,7 @@ export default function MapView() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [showWebcams, mapCenter.lat, mapCenter.lon, route]);
+  }, [showWebcams, mapCenter.lat, mapCenter.lon, route, fetchWebcamsWithClientCache]);
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
