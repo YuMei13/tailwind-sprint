@@ -94,3 +94,10 @@ npm run lint
 - `docs/api.md`
 - `docs/dev.md`
 - `docs/deploy.md`
+
+
+## iOS (Capacitor Wrapper)
+
+- Setup guide: `docs/ios-capacitor.md`
+- Config file: `capacitor.config.ts`
+- Scripts: `npm run cap:sync`, `npm run cap:open:ios`, `npm run ios:setup`
