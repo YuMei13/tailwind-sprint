@@ -272,6 +272,25 @@ export default function ElevationPanel({
             }
             setHoverX(null);
           }}
+          onTouchStart={(e) => {
+            const touch = e.touches[0];
+            if (!touch) return;
+            const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+            const xPos = touch.clientX - rect.left;
+            const clampedX = Math.max(Pleft, Math.min(W - Pright, xPos));
+            setHoverX(clampedX);
+          }}
+          onTouchMove={(e) => {
+            const touch = e.touches[0];
+            if (!touch) return;
+            const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+            const xPos = touch.clientX - rect.left;
+            const clampedX = Math.max(Pleft, Math.min(W - Pright, xPos));
+            setHoverX(clampedX);
+          }}
+          onTouchEnd={() => {
+            setHoverX(null);
+          }}
           onClick={() => {
             const innerIdx = displayHoverIdx ?? hoverIdx;
             if (innerIdx == null) {
@@ -281,7 +300,7 @@ export default function ElevationPanel({
             const origIdx = series.mapIdx[innerIdx];
             onClick?.(points[origIdx], origIdx);
           }}
-          style={{ cursor: "pointer", pointerEvents: "auto", display: "block" }}
+          style={{ cursor: "pointer", pointerEvents: "auto", display: "block", touchAction: "none" }}
         >
           {/* Axes */}
           <line x1={Pleft} y1={H - Pbottom} x2={W - Pright} y2={H - Pbottom} stroke="#cbd5e1" />
@@ -344,17 +363,17 @@ export default function ElevationPanel({
               strokeDasharray="6 4"
             />
           )}
-          {displayHoverIdx != null && displayHoverIdx < series.dist.length && (
+          {(displayHoverIdx != null || selectedInnerIdx != null) && ((displayHoverIdx ?? selectedInnerIdx) as number) < series.dist.length && (
             <>
             <line
-              x1={x(series.dist[displayHoverIdx])}
+              x1={x(series.dist[(displayHoverIdx ?? selectedInnerIdx) as number])}
               y1={Ptop}
-              x2={x(series.dist[displayHoverIdx])}
+              x2={x(series.dist[(displayHoverIdx ?? selectedInnerIdx) as number])}
               y2={H - Pbottom}
               stroke="#6366f1"
               strokeDasharray="4 3"
             />
-            <g transform={`translate(${x(series.dist[displayHoverIdx])}, ${y(series.elev[displayHoverIdx])}) rotate(${hoverTiltDeg})`}>
+            <g transform={`translate(${x(series.dist[(displayHoverIdx ?? selectedInnerIdx) as number])}, ${y(series.elev[(displayHoverIdx ?? selectedInnerIdx) as number])}) rotate(${displayHoverIdx != null ? hoverTiltDeg : 0})`}>
               <image href="/bmx.png" x="-15" y="-15" width="30" height="30" />
             </g>
             </>
