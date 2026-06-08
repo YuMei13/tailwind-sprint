@@ -75,6 +75,11 @@ export default function WebcamsPanel({
     w.image?.daylight?.preview ||
     "";
 
+  const canShowImage = (u: string) => {
+    const v = u.toLowerCase();
+    return !(v.includes(".webp") || v.includes("format=webp"));
+  };
+
   return (
     <div style={{ width: 360, background: "rgba(255,255,255,0.98)", border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, boxShadow: "0 6px 16px rgba(0,0,0,0.15)", zIndex: 1400 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -100,11 +105,12 @@ export default function WebcamsPanel({
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflow: "auto" }}>
         {items.map((w, idx) => {
           const img = imgOf(w);
+          const showImg = img && canShowImage(img);
           const labelNum = idx + 1;
           return (
             <div key={`${w.id ?? `${w.lat},${w.lon}`}`} style={{ display: "flex", gap: 8, borderBottom: "1px solid #f1f5f9", paddingBottom: 8 }}>
               <div style={{ width: 96, height: 64, borderRadius: 6, overflow: "hidden", background: "#f1f5f9", flex: "0 0 auto", position: "relative" }}>
-                {img ? (
+                {showImg ? (
                   <Image
                     src={img}
                     alt={w.title ?? "webcam"}

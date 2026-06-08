@@ -57,6 +57,11 @@ const WEBCAM_RADIUS_KM = 0.5;
 const WEBCAM_CLIENT_CACHE_TTL_MS = 60000;
 const ROUTE_CACHE_PREFIX = "ts-route-cache:v10:";
 const ROUTE_API_CACHE_PREFIX = "ts-route-api-cache:v1:";
+const isWebpPreviewUrl = (url?: string): boolean => {
+  if (!url) return false;
+  const value = String(url).toLowerCase();
+  return value.includes(".webp") || value.includes("format=webp");
+};
 
 const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
   {
@@ -2185,7 +2190,7 @@ export default function MapView() {
               <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", marginBottom: 8 }}>
                 {activeWebcam.city || activeWebcam.region || activeWebcam.country || `${activeWebcam.lat.toFixed(5)}, ${activeWebcam.lon.toFixed(5)}`}
               </div>
-              {activeWebcam.preview ? (
+              {activeWebcam.preview && !isWebpPreviewUrl(activeWebcam.preview) ? (
                 <Image
                   src={activeWebcam.preview}
                   alt={activeWebcam.title || "webcam preview"}
