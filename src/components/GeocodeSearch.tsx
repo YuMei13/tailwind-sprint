@@ -10,8 +10,6 @@ type Props = {
   center: { lat: number; lon: number };
   /** 選取單一結果（使用者點選下拉） */
   onPick: (role: Role, lat: number, lon: number, label: string) => void;
-  /** 使用者按下 Find route（可能只輸入文字、未選下拉） */
-  onSubmit?: (startText: string, endText: string) => void;
   defaultStart?: string;
   defaultEnd?: string;
 };
@@ -47,7 +45,7 @@ async function geocodeFetch(
   return j.items ?? [];
 }
 
-export default function GeocodeSearch({ onPick, onSubmit, center, defaultStart, defaultEnd }: Props) {
+export default function GeocodeSearch({ onPick, center, defaultStart, defaultEnd }: Props) {
   const [startQ, setStartQ] = useState(defaultStart ?? "");
   const [endQ, setEndQ] = useState(defaultEnd ?? "");
 
@@ -159,14 +157,6 @@ export default function GeocodeSearch({ onPick, onSubmit, center, defaultStart, 
         {endList.length > 0 && renderList("end", endList)}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-        {/* <button
-          onClick={() => onSubmit?.(startQ, endQ)}
-          style={{ padding: "6px 10px", borderRadius: 8, background: "#2563eb", color: "#fff", border: "1px solid #2563eb" }}
-        >
-          Find route
-        </button> */}
-      </div>
     </div>
   );
 }
