@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-const serverUrl = process.env.CAP_SERVER_URL;
+const serverUrl = process.env.CAP_SERVER_URL ?? "https://tailwind-sprint.vercel.app";
 
 const config: CapacitorConfig = {
   appId: "com.soonla.tailwindsprint",
