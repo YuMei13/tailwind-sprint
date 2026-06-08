@@ -6,6 +6,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildKey, cacheFetchJSON } from "@/lib/cache";
 
 type LatLon = [number, number]; // [lat, lon]
+
+// Upper bound on points per request to avoid fanning out into an unbounded
+// number of upstream Open-Meteo calls from a single public request.
+const MAX_POINTS = 2000;
+
+function isValidLatLon(p: unknown): p is LatLon {
+  return (
+    Array.isArray(p) &&
+    p.length === 2 &&
+    Number.isFinite(p[0]) &&
+    Number.isFinite(p[1]) &&
+    Math.abs(p[0]) <= 90 &&
+    Math.abs(p[1]) <= 180
+  );
+}
 type WindPoint = {
   lat: number;
   lon: number;
@@ -88,7 +103,13 @@ async function fetchWind(
 export async function POST(req: NextRequest) {
   try {
     const { points, forecastIsoUtc } = (await req.json()) as { points?: LatLon[]; forecastIsoUtc?: string }; // [lat,lon]
-    if (!points || points.length === 0) return NextResponse.json({ points: [] });
+    if (!Array.isArray(points) || points.length === 0) return NextResponse.json({ points: [] });
+    if (points.length > MAX_POINTS) {
+      return NextResponse.json({ error: `Too many points (max ${MAX_POINTS})` }, { status: 400 });
+    }
+    if (!points.every(isValidLatLon)) {
+      return NextResponse.json({ error: "Invalid points" }, { status: 400 });
+    }
 
     // 以「UTC 小時」做分桶，避免跨時段混用
     const now = forecastIsoUtc ? new Date(forecastIsoUtc) : new Date();

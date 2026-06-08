@@ -160,6 +160,16 @@ export async function POST(req: NextRequest) {
     }
 
     const samples = interpolateAlongPath(routeCoords, Math.max(50, intervalMeters));
+
+    // Guard against oversized routes building a giant upstream URL (Open-Meteo)
+    // or a long per-point Mapbox terrain loop.
+    const MAX_SAMPLES = 10000;
+    if (samples.length > MAX_SAMPLES) {
+      return NextResponse.json(
+        { error: `Route too long to sample (max ${MAX_SAMPLES} points)` },
+        { status: 400 }
+      );
+    }
     const key = buildKey("elev", { samples, dataset });
     const nocache = req.nextUrl.searchParams.get("nocache") === "1";
 
