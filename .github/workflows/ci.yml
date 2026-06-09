@@ -15,5 +15,6 @@ jobs:
           node-version-file: '.nvmrc'   # 先在根目錄放一份 .nvmrc，內容為 20
           cache: 'npm'
       - run: npm ci
-      - run: npm run build --if-present
       - run: npm run lint --if-present
+      - run: npm test --if-present
+      - run: npm run build --if-present

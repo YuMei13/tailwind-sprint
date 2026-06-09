@@ -1,0 +1,305 @@
+import type { RoutePreset } from "./types";
+
+export const TAIPEI_ROUTE_PRESETS: RoutePreset[] = [
+  {
+    id: "bike100-jianan",
+    name: "台北劍南路（Biji GPX）",
+    description: "來源：Cycling Biji 路線 0E370FC7-3E60-5866-6F98-55D32AF63732 GPX。",
+    stops: [
+      { name: "起點（0.00 km）", lonLat: [121.554182, 25.085481] },
+      { name: "檢查點 1（0.70 km）", lonLat: [121.556467, 25.087883] },
+      { name: "檢查點 2（1.35 km）", lonLat: [121.552015, 25.090132] },
+      { name: "檢查點 3（2.24 km）", lonLat: [121.555032, 25.095251] },
+      { name: "檢查點 4（3.25 km）", lonLat: [121.556529, 25.100927] },
+      { name: "終點（4.35 km）", lonLat: [121.557973, 25.107554] },
+    ],
+  },
+  {
+    id: "bike100-nanshen",
+    name: "台北南港｜南深深南",
+    description: "參考 bike100 台北熱門路線：南港南深路段。",
+    stops: [
+      { name: "南港展覽館", lonLat: [121.617219, 25.054569] },
+      { name: "南深路", lonLat: [121.617473, 25.033346] },
+      { name: "深南路", lonLat: [121.621839, 25.010681] },
+    ],
+  },
+  {
+    id: "bike100-zhongshe",
+    name: "台北士林｜中社路",
+    description: "來源：上傳 GPX 檔 中社路.gpx。",
+    gpxPath: "/zhongshe.gpx",
+    stops: [
+      { name: "國立故宮博物院", lonLat: [121.549134, 25.102039] },
+      { name: "中社路一段", lonLat: [121.560807, 25.106856] },
+    ],
+  },
+  {
+    id: "bike100-maokong",
+    name: "台北木柵｜貓空（順時針）",
+    description: "參考 bike100 台北路線：木柵上貓空。",
+    stops: [
+      { name: "木柵動物園", lonLat: [121.581081, 24.998674] },
+      { name: "貓空纜車站", lonLat: [121.587892, 24.968622] },
+      { name: "指南宮", lonLat: [121.589685, 24.978929] },
+    ],
+  },
+  {
+    id: "bike100-houshanyue",
+    name: "台北木柵｜猴山岳",
+    description: "參考 bike100 台北熱門路線：木柵猴山岳。",
+    stops: [
+      { name: "木柵動物園", lonLat: [121.581081, 24.998674] },
+      { name: "草湳大榕樹", lonLat: [121.608451, 24.97011] },
+      { name: "猴山岳步道口", lonLat: [121.6215, 24.9736] },
+    ],
+  },
+  {
+    id: "bike100-tunshan-nav",
+    name: "台北天母｜中山北路上大屯山助航站",
+    description: "參考 bike100 台北進階路線：中山北路上大屯助航站。",
+    stops: [
+      { name: "天母運動公園", lonLat: [121.534611, 25.114684] },
+      { name: "中山北路七段", lonLat: [121.530516, 25.119921] },
+      { name: "大屯山助航站", lonLat: [121.522727, 25.175209] },
+    ],
+  },
+  {
+    id: "bike100-haima",
+    name: "台北陽明山系｜海馬",
+    description: "來源：上傳 GPX 檔 海馬.gpx。",
+    gpxPath: "/haima.gpx",
+    stops: [
+      { name: "至善公園", lonLat: [121.538985, 25.098452] },
+      { name: "風櫃嘴", lonLat: [121.5996, 25.1329] },
+      { name: "萬里", lonLat: [121.689987, 25.178183] },
+    ],
+  },
+  {
+    id: "bike100-flying-cat",
+    name: "台北石碇｜飛躍的貓咪（順時針）",
+    description: "參考 bike100 高評分台北路線：石碇飛躍的貓咪。",
+    stops: [
+      { name: "石碇老街", lonLat: [121.659961, 24.991052] },
+      { name: "平溪", lonLat: [121.736206, 25.025877] },
+      { name: "菁桐", lonLat: [121.72512, 25.02285] },
+    ],
+  },
+  {
+    id: "bike100-ym-serial",
+    name: "台北陽明山景連騎｜文大後山→大屯助航站→中湖戰備道",
+    description: "參考 bike100 台北高評分連騎路線。",
+    stops: [
+      { name: "文化大學", lonLat: [121.539019, 25.135783] },
+      { name: "大屯山助航站", lonLat: [121.522727, 25.175209] },
+      { name: "中湖戰備道", lonLat: [121.576, 25.1678] },
+    ],
+  },
+  {
+    id: "bike100-rulai",
+    name: "自行車－如來神掌線",
+    description: "來源：上傳 GPX 檔 瘋神掌100K順騎.gpx。",
+    gpxPath: "/rulai-100k.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.53406, 25.09764] },
+      { name: "檢查點 1", lonLat: [121.56411, 25.16252] },
+      { name: "檢查點 2", lonLat: [121.61603, 25.21818] },
+      { name: "檢查點 3", lonLat: [121.58733, 25.29196] },
+      { name: "檢查點 4", lonLat: [121.53038, 25.28666] },
+      { name: "檢查點 5", lonLat: [121.49259, 25.26008] },
+      { name: "檢查點 6", lonLat: [121.45792, 25.22916] },
+      { name: "檢查點 7", lonLat: [121.53064, 25.18222] },
+      { name: "終點", lonLat: [121.52898, 25.09601] },
+    ],
+  },
+  {
+    id: "rwgps-49826274",
+    name: "環大台北自行車挑戰（RWGPS）",
+    description: "來源：上傳 GPX 檔 環大台北200K.gpx。",
+    gpxPath: "/rwgps-49826274.gpx",
+    stops: [
+      { name: "起點（板橋）", lonLat: [121.46942, 25.00955] },
+      { name: "深坑", lonLat: [121.69745, 25.01866] },
+      { name: "福隆", lonLat: [121.92695, 25.02745] },
+      { name: "基隆", lonLat: [121.74075, 25.13611] },
+      { name: "老梅", lonLat: [121.54876, 25.28943] },
+      { name: "關渡", lonLat: [121.448557, 25.165314] },
+      { name: "終點（板橋）", lonLat: [121.46943, 25.00953] },
+    ],
+  },
+  {
+    id: "rwgps-38179892",
+    name: "環小台北自行車道（RWGPS）",
+    description: "來源：上傳 GPX 檔 環小台北.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/rwgps-38179892.gpx",
+    stops: [
+      { name: "起點（文山）", lonLat: [121.53943, 24.98836] },
+      { name: "新店溪右岸自行車道", lonLat: [121.53062, 25.01035] },
+      { name: "淡水線自行車道", lonLat: [121.50578, 25.05247] },
+      { name: "基隆河左岸自行車道", lonLat: [121.54351, 25.07354] },
+      { name: "南港（研究院路）", lonLat: [121.61659, 25.05521] },
+      { name: "景美溪右岸自行車道", lonLat: [121.53997, 24.98834] },
+      { name: "終點（文山）", lonLat: [121.53844, 24.98843] },
+    ],
+  },
+  {
+    id: "feng-east-3t-550k",
+    name: "瘋系列－東三塔 550K",
+    description: "來源：上傳 GPX 檔 瘋系列東三塔550K_(經旭海).gpx。",
+    gpxPath: "/feng-east-3t-550k.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.53776, 25.28993] },
+      { name: "終點", lonLat: [120.84815, 21.9111] },
+    ],
+  },
+  {
+    id: "taipei-central-loop",
+    name: "環中台北",
+    description: "來源：上傳 GPX 檔 環中台北.gpx。",
+    gpxPath: "/taipei-central-loop.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.487379, 25.049422] },
+      { name: "終點", lonLat: [121.489951, 25.048421] },
+    ],
+  },
+  {
+    id: "fengguizui",
+    name: "風櫃嘴",
+    description: "來源：上傳 GPX 檔 風櫃嘴_FengGuiZui.gpx。",
+    gpxPath: "/fengguizui.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.55085, 25.10048] },
+      { name: "終點", lonLat: [121.60005, 25.1341] },
+    ],
+  },
+  {
+    id: "yangjin-3p",
+    name: "陽金3P",
+    description: "來源：上傳 GPX 檔 陽金3P.gpx（直接依軌跡順序顯示）。",
+    gpxPath: "/yangjin-3p.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.53575, 25.10858] },
+      { name: "終點", lonLat: [121.563, 25.1675] },
+    ],
+  },
+  {
+    id: "tis-wuling",
+    name: "TIS 武嶺",
+    description: "來源：上傳 GPX 檔 TIS武嶺.gpx。",
+    gpxPath: "/tis-wuling.gpx",
+    stops: [
+      { name: "起點", lonLat: [120.979231, 23.973577] },
+      { name: "終點", lonLat: [121.275798, 24.137187] },
+    ],
+  },
+  {
+    id: "buyanting",
+    name: "不厭亭",
+    description: "來源：上傳 GPX 檔 不厭亭.gpx。",
+    gpxPath: "/buyanting.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.508518, 25.062784] },
+      { name: "終點", lonLat: [121.508554, 25.062788] },
+    ],
+  },
+  {
+    id: "wufenshan",
+    name: "五分山",
+    description: "來源：上傳 GPX 檔 五分山.gpx。",
+    gpxPath: "/wufenshan.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.500498, 25.043198] },
+      { name: "終點", lonLat: [121.805968, 25.108571] },
+    ],
+  },
+  {
+    id: "lengfeng-zhongjian",
+    name: "冷風中劍",
+    description: "來源：上傳 GPX 檔 冷風中劍.gpx。",
+    gpxPath: "/lengfeng-zhongjian.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.551863, 25.101098] },
+      { name: "終點", lonLat: [121.551911, 25.10126] },
+    ],
+  },
+  {
+    id: "beigao-360",
+    name: "北高360",
+    description: "來源：上傳 GPX 檔 北高360.gpx。",
+    gpxPath: "/beigao-360.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.386803, 25.142307] },
+      { name: "終點", lonLat: [120.301276, 22.69387] },
+    ],
+  },
+  {
+    id: "balaka",
+    name: "巴拉卡",
+    description: "來源：上傳 GPX 檔 巴拉卡.gpx。",
+    gpxPath: "/balaka.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.508301, 25.060214] },
+      { name: "終點", lonLat: [121.508378, 25.06327] },
+    ],
+  },
+  {
+    id: "sunmoonlake-83k",
+    name: "日月潭 83k",
+    description: "來源：上傳 GPX 檔 日月潭83k.gpx。",
+    gpxPath: "/sunmoonlake-83k.gpx",
+    stops: [
+      { name: "起點", lonLat: [120.901891, 23.854854] },
+      { name: "終點", lonLat: [120.90214, 23.850463] },
+    ],
+  },
+  {
+    id: "fulshan-wulai",
+    name: "烏來｜福山部落",
+    description: "來源：上傳 GPX 檔 烏來_福山部落.gpx。",
+    gpxPath: "/fulshan-wulai.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.500615, 25.044331] },
+      { name: "終點", lonLat: [121.507798, 25.05658] },
+    ],
+  },
+  {
+    id: "huadong-365-day1",
+    name: "環花東 365 Day 1",
+    description: "來源：上傳 GPX 檔 環花東365_Day1.gpx。",
+    gpxPath: "/huadong-365-day1.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.60887996666133, 23.96668997593224] },
+      { name: "終點", lonLat: [121.12190974876285, 22.770249657332897] },
+    ],
+  },
+  {
+    id: "huadong-365-day2",
+    name: "環花東 365 Day 2",
+    description: "來源：上傳 GPX 檔 環花東365_Day2.gpx。",
+    gpxPath: "/huadong-365-day2.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.1293548066169, 22.79334582388401] },
+      { name: "終點", lonLat: [121.59524152055383, 23.938634153455496] },
+    ],
+  },
+  {
+    id: "shimen-reservoir",
+    name: "石門水庫",
+    description: "來源：上傳 GPX 檔 石門水庫.gpx。",
+    gpxPath: "/shimen-reservoir.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.478557, 25.045799] },
+      { name: "終點", lonLat: [121.478574, 25.045912] },
+    ],
+  },
+  {
+    id: "jiaobanshan",
+    name: "角板山",
+    description: "來源：上傳 GPX 檔 角板山.gpx。",
+    gpxPath: "/jiaobanshan.gpx",
+    stops: [
+      { name: "起點", lonLat: [121.477841, 25.045424] },
+      { name: "終點", lonLat: [121.477815, 25.045398] },
+    ],
+  },
+];

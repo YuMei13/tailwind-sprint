@@ -50,7 +50,17 @@ export async function POST(req: NextRequest) {
     // Compatible with start/end and coordinates input
     let coordinates: LonLat[] | null = null;
 
+    // This is the endpoint the planner actually calls. Cap the raw input before
+    // filtering/key-building so an oversized array can't drive O(n) work upstream
+    // of the down-sample-to-25 below.
+    const MAX_INPUT_COORDS = 1000;
     if ("coordinates" in bodyIn && Array.isArray(bodyIn.coordinates)) {
+      if (bodyIn.coordinates.length > MAX_INPUT_COORDS) {
+        return NextResponse.json(
+          { error: `Too many coordinates (max ${MAX_INPUT_COORDS})` },
+          { status: 400 }
+        );
+      }
       const arr = bodyIn.coordinates.filter(isValidLonLat);
       if (arr.length >= 2) coordinates = arr;
     }

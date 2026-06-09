@@ -99,6 +99,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "missing or invalid coordinates" }, { status: 400 });
     }
 
+    // ORS directions only accepts a handful of waypoints; reject oversized
+    // payloads early instead of forwarding them upstream.
+    const MAX_WAYPOINTS = 100;
+    if (coordinates.length > MAX_WAYPOINTS) {
+      return NextResponse.json(
+        { error: `Too many waypoints (max ${MAX_WAYPOINTS})` },
+        { status: 400 }
+      );
+    }
+
     const ORS_KEY = process.env.ORS_API_KEY;
     if (!ORS_KEY) {
       return NextResponse.json({ error: "Missing ORS_API_KEY" }, { status: 500 });

@@ -77,6 +77,7 @@ npm run dev
 npm run build
 npm run start
 npm run lint
+npm test
 ```
 
 ## API Routes
@@ -90,10 +91,11 @@ npm run lint
 
 ## Docs
 
-- `API_SETUP.md`
 - `docs/api.md`
 - `docs/dev.md`
 - `docs/deploy.md`
+- `docs/ios-capacitor.md`
+- `docs/archive/` — older setup notes and point-in-time summaries
 
 
 ## iOS (Capacitor Wrapper)
