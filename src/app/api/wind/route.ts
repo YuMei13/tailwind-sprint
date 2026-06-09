@@ -110,6 +110,11 @@ export async function POST(req: NextRequest) {
     if (!points.every(isValidLatLon)) {
       return NextResponse.json({ error: "Invalid points" }, { status: 400 });
     }
+    // A non-empty forecastIsoUtc must be a parseable date; otherwise new Date()
+    // yields Invalid Date and the hourKey/upstream query silently break.
+    if (forecastIsoUtc && !Number.isFinite(Date.parse(forecastIsoUtc))) {
+      return NextResponse.json({ error: "Invalid forecastIsoUtc" }, { status: 400 });
+    }
 
     // 以「UTC 小時」做分桶，避免跨時段混用
     const now = forecastIsoUtc ? new Date(forecastIsoUtc) : new Date();

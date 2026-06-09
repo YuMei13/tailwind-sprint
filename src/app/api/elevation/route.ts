@@ -149,6 +149,24 @@ export async function POST(req: NextRequest) {
       dataset?: string;
     };
 
+    // intervalMeters must be a finite positive number; otherwise Math.max(50, NaN)
+    // is NaN and interpolateAlongPath silently degrades to just the endpoints.
+    const interval = Number(intervalMeters);
+    if (!Number.isFinite(interval) || interval <= 0) {
+      return NextResponse.json({ error: "Invalid intervalMeters" }, { status: 400 });
+    }
+
+    // Cap the raw input before filtering/interpolating so an oversized array
+    // can't drive O(n) validation + interpolation work.
+    const MAX_INPUT_COORDS = 50000;
+    const rawLen = Array.isArray(coords) ? coords.length : Array.isArray(points) ? points.length : 0;
+    if (rawLen > MAX_INPUT_COORDS) {
+      return NextResponse.json(
+        { error: `Too many input coordinates (max ${MAX_INPUT_COORDS})` },
+        { status: 400 }
+      );
+    }
+
     const routeCoords: LonLat[] = Array.isArray(coords)
       ? coords.filter(isValidLonLat)
       : Array.isArray(points)
@@ -159,17 +177,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ points: [] });
     }
 
-    const samples = interpolateAlongPath(routeCoords, Math.max(50, intervalMeters));
+    const stepMeters = Math.max(50, interval);
 
-    // Guard against oversized routes building a giant upstream URL (Open-Meteo)
-    // or a long per-point Mapbox terrain loop.
+    // Reject oversized routes BEFORE building the interpolated array (which would
+    // otherwise allocate ~totalLength/step points up front). Estimating the sample
+    // count from total route length costs only O(routeCoords).
     const MAX_SAMPLES = 10000;
-    if (samples.length > MAX_SAMPLES) {
+    let totalMeters = 0;
+    for (let i = 1; i < routeCoords.length; i++) {
+      const [lon1, lat1] = routeCoords[i - 1];
+      const [lon2, lat2] = routeCoords[i];
+      totalMeters += haversineMeters(lat1, lon1, lat2, lon2);
+    }
+    if (totalMeters / stepMeters > MAX_SAMPLES) {
       return NextResponse.json(
         { error: `Route too long to sample (max ${MAX_SAMPLES} points)` },
         { status: 400 }
       );
     }
+
+    const samples = interpolateAlongPath(routeCoords, stepMeters);
     const key = buildKey("elev", { samples, dataset });
     const nocache = req.nextUrl.searchParams.get("nocache") === "1";
 
