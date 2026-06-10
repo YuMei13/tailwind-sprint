@@ -19,8 +19,8 @@ export default function HomePage() {
           style={{
             position: "fixed",
             inset: 0,
-            backgroundColor: "#FCFCFA",
-            backgroundImage: 'url("/soonla-splash.png")',
+            backgroundColor: "#ffffff",
+            backgroundImage: 'url("/soonla-splash.jpg")',
             backgroundRepeat: "no-repeat",
             backgroundPosition: "center center",
             backgroundSize: "contain",
