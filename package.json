@@ -16,7 +16,6 @@
   "dependencies": {
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
-    "@capacitor/geolocation": "^8.2.0",
     "@capacitor/ios": "^8.3.4",
     "@upstash/redis": "^1.35.4",
     "mapbox-gl": "^3.3.0",

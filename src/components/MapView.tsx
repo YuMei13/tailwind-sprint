@@ -11,7 +11,6 @@ import WindLegend from "@/components/WindLegend";
 import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import MapboxRoutingPanel, { type Role as RoutingPanelRole } from "@/components/MapboxRoutingPanel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Geolocation } from "@capacitor/geolocation";
 import type {
   LineLatLng,
   LonLat,
@@ -343,36 +342,21 @@ export default function MapView() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        // Best-effort: triggers the native iOS permission prompt (WKWebView does
-        // not bridge navigator.geolocation to CoreLocation). On web this resolves
-        // via the Permissions API. Wrapped so a web quirk can't block the read.
-        try {
-          await Geolocation.requestPermissions();
-        } catch {
-          // ignore; getCurrentPosition still prompts/works
-        }
-        const pos = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: false,
-          timeout: 20000,
-          maximumAge: 120000,
-        });
-        if (cancelled) return;
+    if (!("geolocation" in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
         const { latitude, longitude } = pos.coords;
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
         setMapCenter({ lat: latitude, lon: longitude });
         setZoom((z) => (z < 12 ? 12 : z));
         pendingGeoCenterRef.current = { lat: latitude, lon: longitude };
         tryFlyToPendingGeoCenter();
-      } catch {
+      },
+      () => {
         // Ignore location errors and keep default center.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      },
+      { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 }
+    );
   }, [tryFlyToPendingGeoCenter]);
 
   const loadCachedPresetRoute = (presetId: string): LonLat[] | null => {
