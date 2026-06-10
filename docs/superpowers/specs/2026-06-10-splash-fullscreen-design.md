@@ -6,97 +6,106 @@
 
 ## Problem
 
-On a portrait phone the splash does not fill the screen. The asset
-`public/soonla-splash.jpg` is a **2732×2732 square** in which the actual logo
-(blue "Soonla" script + mountain/wind/cyclist illustration + the tagline
-"公路車路線與風向 / ROADS & WIND FOR CYCLING") sits as a **landscape band in the
-vertical centre**, surrounded by a **warm cream / off-white background**.
+On a portrait phone the splash logo looks small and lost in empty space — it
+does not fill the screen.
 
-It is rendered in `src/app/page.tsx` with `background-size: contain` on a pure
-**white** (`#ffffff`) container. On a tall portrait screen this produces:
+The web splash (`src/app/page.tsx`) renders `public/soonla-splash.jpg`, which
+is a **2732×2732 square** where the actual logo (blue "Soonla" script +
+mountain/wind/cyclist illustration + the tagline "公路車路線與風向 / ROADS & WIND
+FOR CYCLING") occupies only **~24% of the width and ~16% of the height**, dead
+centre, surrounded by a huge margin of **near-white** padding baked into the
+image. With `background-size: contain` on a tall portrait screen the logo is
+sized to that tiny fraction, so it appears small with lots of empty space.
 
-1. The square is sized to the screen **width**, so the logo appears small and
-   centred with large **white bars top and bottom**.
-2. A faint **seam** where the image's cream background meets the white page
-   background.
+The native iOS launch screen (`LaunchScreen.storyboard`) uses a **different**
+asset — `Splash.imageset/splash-2732x2732*.png` — which places an even smaller
+logo low inside a cream "card" on a white field, and its background resolves to
+`systemBackgroundColor` (white in light mode, **black in dark mode**).
 
-There are two splashes in the launch sequence on the native app:
+### Findings that drove the design (measured, not eyeballed)
 
-- the **native iOS launch screen** (`LaunchScreen.storyboard`), shown first,
-  before the webview loads — currently `scaleAspectFit` on the system
-  background (white);
-- the **web splash** (`src/app/page.tsx`), shown for ~1s after the webview
-  loads.
-
-Both exhibit the white-bar / white-background problem.
+- `soonla-splash.jpg` background is **`#FEFEFE` — neutral near-white, not cream.**
+  So there are no coloured bars to recolour; "fill with the background colour"
+  would be a no-op. The real problem is the logo is **too small** (76% baked-in
+  padding).
+- The repo already contains **`public/soonla-splash.png` (1024×559)** — the
+  **same logo, already tightly cropped** with even margins, on a near-white
+  (`~#FCFCFA`) background. This is the asset we should display; **no cropping is
+  required.**
 
 ## Goal
 
-One seamless **cream full-screen splash** with the **whole logo visible**,
-centred at a comfortable size, on **both** the native launch screen and the web
-splash, in portrait or landscape. Nothing cropped, nothing distorted, no white
-bars, no seam.
+A large, centred logo that fills the phone screen comfortably, **whole** (never
+cropped, never distorted), with a uniform near-white background and **no bars or
+seam**, on **both** the web splash and the native iOS launch screen, in portrait
+or landscape, light or dark mode.
 
-## Decision (chosen during brainstorming)
+## Approach (revised after measurement)
 
-- **Fit:** "Whole logo, no white bars." Fill the screen with the splash's own
-  cream background colour and keep the entire logo visible. (Rejected: `cover`
-  — crops the logo edges; a new portrait asset — out of scope.)
-- **Logo size:** centred at a **comfortable size** on cream (keep `contain`
-  behaviour for the logo; do not zoom/enlarge to the point of cropping the
-  logo art). Only the empty cream margins may extend past the screen edges.
-
-## Approach
-
-Two small, surgical changes — no new asset, no logo redesign, no timing change.
+Use the already-tight `soonla-splash.png` instead of the padded square, and make
+the surrounding colour match the asset.
 
 1. **Web splash — `src/app/page.tsx`**
-   Change the splash container background from `#ffffff` to the asset's exact
-   **cream** hex, keeping `background-size: contain`, `background-position:
-   center`, `background-repeat: no-repeat`. The cream then fills the entire
-   `position: fixed; inset: 0` container, the logo stays fully visible and
-   centred, and the cream-vs-white seam disappears.
+   - Point `backgroundImage` at `/soonla-splash.png` (the tight 1024×559 logo)
+     instead of `/soonla-splash.jpg`.
+   - Set `backgroundColor` to **`#FCFCFA`** (the png's edge colour) so the
+     `contain` letterbox bands blend seamlessly into the image edges.
+   - Keep `background-size: contain`, `background-position: center`,
+     `background-repeat: no-repeat`.
+   Result: on portrait the logo fills the width and sits centred (~66% of width,
+   comfortable side margins), with seamless `#FCFCFA` above/below — no small
+   logo, no bars, no seam.
 
-2. **Native iOS launch screen — `ios/App/App/Base.lproj/LaunchScreen.storyboard`**
-   Set the launch view's `backgroundColor` to the **same cream** hex (it
-   currently resolves to `systemBackgroundColor` = white), keeping
-   `contentMode="scaleAspectFit"`. This removes the white flash/bars before the
-   web splash appears, so the whole launch sequence is one cream screen.
+2. **Native iOS launch screen**
+   - **`Splash.imageset`**: replace the three card-composition PNGs
+     (`splash-2732x2732.png`, `-1.png`, `-2.png`) with copies of the tight
+     `soonla-splash.png`, keeping the filenames so `Contents.json` is untouched.
+   - **`LaunchScreen.storyboard`**: set the launch view's background colour
+     explicitly to **`#FCFCFA`** (currently `systemBackgroundColor`), keeping
+     `contentMode="scaleAspectFit"`. This makes the native launch match the web
+     splash and fixes the dark-mode black background.
 
-### Exact cream colour
+## Decision log
 
-The exact hex is **not** eyeballed. At implementation time, sample a corner
-pixel of `public/soonla-splash.jpg` (a region of pure background, e.g. 15px
-in from a corner) and use that value for both the web container background and
-the storyboard background. PIL is not installed on the dev machine, so sample
-via a Node/canvas read or an equivalent one-off, not by eye. The two surfaces
-MUST use the identical value so there is no visible boundary.
+- **Fit:** whole logo, no cropping. (Rejected `cover` — crops the logo edges.)
+- **Enlarge by:** using the already-tight png. (Rejected: cropping the square
+  jpg — unnecessary once the tight png was found; rejected a brand-new asset —
+  out of scope.)
+- **Background colour:** `#FCFCFA`, sampled from the png's edge pixels (the jpg's
+  `#FEFEFE` was its corners; the png — the asset we now use — is `~#FCFCFA`).
+- **Logo size:** "comfortable centred size" = `contain` of the tight png (~66%
+  of screen width on portrait). Not enlarged further.
 
 ## Out of scope
 
-- Creating or editing the splash artwork (no new portrait asset).
-- The unused `public/soonla-splash.png` (landscape variant) — left as-is.
+- Creating or editing the splash artwork.
 - The 1-second splash duration and the splash→map transition.
+- `public/soonla-splash.jpg` — left in the repo, simply no longer referenced.
 - Android (project is iOS-only via Capacitor today).
 
 ## Files touched
 
-- Modify: `src/app/page.tsx` (splash container background colour)
+- Modify: `src/app/page.tsx` (background image path + background colour)
+- Replace: `ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png`
+- Replace: `ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-1.png`
+- Replace: `ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-2.png`
 - Modify: `ios/App/App/Base.lproj/LaunchScreen.storyboard` (launch view background colour)
 
 ## Verification
 
-Manual, visual (no automated test — this is a styling/asset-fit change):
-
-1. `npm run dev`, open in a browser, and use device-emulation at a portrait
-   phone size (~390×844). Confirm: cream fills the whole viewport, logo centred
-   and fully visible, **no white bars**, **no seam**.
-2. Confirm at a landscape / wide size that the logo is still centred and whole.
-3. (When building the iOS app) confirm the native launch screen shows the same
-   cream with no white flash before the web splash.
+- **Web (automated-ish + visual):** `npm run dev`, open in a browser at a
+  portrait phone size (~390×844). Confirm: large centred logo, seamless
+  `#FCFCFA` fill, **no small logo, no bars, no seam**. Check a wide/landscape
+  size too — logo still centred and whole. Confirm `npm run build` still passes.
+- **Native (build-time, done by the user):** build the iOS app in Xcode and
+  confirm the launch screen shows the same logo on `#FCFCFA`, in both light and
+  dark mode, with no black background and no card.
 
 ## Risks
 
-- **Colour mismatch / seam** if the sampled hex is wrong — mitigated by
-  sampling the actual asset pixel and using one shared value on both surfaces.
-- Low blast radius: only two files, both presentation-only, no logic.
+- **Seam** if the page colour doesn't match the png edge — mitigated by using
+  the sampled `#FCFCFA` and the same value on both surfaces.
+- **Native not verifiable in this environment** (no Xcode build here) — the
+  native asset/storyboard changes are specified exactly but signed off by the
+  user's Xcode build. Web is fully verifiable here.
+- Low blast radius: presentation-only, no logic, no new dependencies.
