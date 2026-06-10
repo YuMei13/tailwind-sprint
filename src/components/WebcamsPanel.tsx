@@ -35,6 +35,8 @@ export default function WebcamsPanel({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [radiusKm, setRadiusKm] = useState(20);
+  // Previews that failed to decode (e.g. WebP the iOS webview can't render).
+  const [failedImgs, setFailedImgs] = useState<Set<string>>(new Set());
 
   const url = useMemo(() => {
     const p = new URLSearchParams({
@@ -105,10 +107,11 @@ export default function WebcamsPanel({
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflow: "auto" }}>
         {items.map((w, idx) => {
           const img = imgOf(w);
-          const showImg = img && canShowImage(img);
+          const key = String(w.id ?? `${w.lat},${w.lon}`);
+          const showImg = img && canShowImage(img) && !failedImgs.has(key);
           const labelNum = idx + 1;
           return (
-            <div key={`${w.id ?? `${w.lat},${w.lon}`}`} style={{ display: "flex", gap: 8, borderBottom: "1px solid #f1f5f9", paddingBottom: 8 }}>
+            <div key={key} style={{ display: "flex", gap: 8, borderBottom: "1px solid #f1f5f9", paddingBottom: 8 }}>
               <div style={{ width: 96, height: 64, borderRadius: 6, overflow: "hidden", background: "#f1f5f9", flex: "0 0 auto", position: "relative" }}>
                 {showImg ? (
                   <Image
@@ -117,6 +120,7 @@ export default function WebcamsPanel({
                     width={96}
                     height={64}
                     unoptimized
+                    onError={() => setFailedImgs((prev) => new Set(prev).add(key))}
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                   />
                 ) : (
