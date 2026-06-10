@@ -237,8 +237,6 @@ export default function MapView() {
   const [zoom, setZoom] = useState<number>(13);
   const [webcams, setWebcams] = useState<WebcamItem[]>([]);
   const [activeWebcam, setActiveWebcam] = useState<WebcamItem | null>(null);
-  // Preview URLs that failed to decode (e.g. WebP the iOS webview can't render).
-  const [failedPreviews, setFailedPreviews] = useState<Set<string>>(new Set());
 
   // Start/End [lon, lat]
   const [startLonLat, setStartLonLat] = useState<[number, number] | null>(null);
@@ -1685,17 +1683,13 @@ export default function MapView() {
               <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", marginBottom: 8 }}>
                 {activeWebcam.city || activeWebcam.region || activeWebcam.country || `${activeWebcam.lat.toFixed(5)}, ${activeWebcam.lon.toFixed(5)}`}
               </div>
-              {activeWebcam.preview && !isWebpPreviewUrl(activeWebcam.preview) && !failedPreviews.has(activeWebcam.preview) ? (
+              {activeWebcam.preview && !isWebpPreviewUrl(activeWebcam.preview) ? (
                 <Image
                   src={activeWebcam.preview}
                   alt={activeWebcam.title || "webcam preview"}
                   width={240}
                   height={120}
                   unoptimized
-                  onError={() => {
-                    const p = activeWebcam.preview;
-                    if (p) setFailedPreviews((prev) => new Set(prev).add(p));
-                  }}
                   style={{
                     width: "100%",
                     height: 120,
