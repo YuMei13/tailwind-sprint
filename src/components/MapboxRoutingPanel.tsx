@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 
 type GeoItem = { id: string; name: string; lat: number; lon: number; type?: string };
 export type Role = "start" | "end" | "waypoint";
@@ -60,7 +61,7 @@ async function geocodeFetch(
     params.set("focus.lon", String(opts.focusLon));
   }
   const url = `/api/geocode?${params.toString()}`;
-  const r = await fetch(url, { cache: "no-store", signal });
+  const r = await apiFetch(url, { signal });
   if (!r.ok) throw new Error(`geocode ${r.status}`);
   const j = (await r.json()) as { items?: GeoItem[] };
   return j.items ?? [];

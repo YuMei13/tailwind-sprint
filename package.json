@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "cap:sync": "npx cap sync ios",
     "cap:open:ios": "npx cap open ios",
-    "ios:setup": "npm run build && npx cap sync ios"
+    "ios:setup": "npm run build && npx cap sync ios",
+    "ios:bundle": "bash scripts/build-ios-bundle.sh"
   },
   "dependencies": {
     "@capacitor/cli": "^8.3.4",

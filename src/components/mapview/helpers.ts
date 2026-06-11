@@ -2,6 +2,7 @@
 // These are side-effect free (aside from network in fetchJSON) and carry no
 // component state.
 import type { LatLng, LineLatLng, LonLat, WindPoint, WebcamItem, ElevPoint } from "./types";
+import { apiFetch } from "@/lib/apiFetch";
 
 export const isWebpPreviewUrl = (url?: string): boolean => {
   if (!url) return false;
@@ -153,10 +154,6 @@ export function sampleRoutePoints(route: LineLatLng, maxPoints = 8): { lat: numb
 }
 
 // Fetch JSON with retry and timeout
-function absUrl(path: string) {
-  const base = typeof window !== "undefined" ? window.location.origin : "";
-  return path.startsWith("http") ? path : `${base}${path}`;
-}
 const DEFAULT_TIMEOUT = process.env.NODE_ENV === "development" ? 45000 : 10000;
 const MAX_RETRIES = 4;
 
@@ -169,7 +166,7 @@ export async function fetchJSON<T>(
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), timeoutMs);
     try {
-      const res = await fetch(absUrl(path), { ...rest, signal: ac.signal, cache: "no-store" });
+      const res = await apiFetch(path, { ...rest, signal: ac.signal });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         throw new Error(`${res.status} ${res.statusText} ${txt}`.trim());
