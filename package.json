@@ -11,13 +11,15 @@
     "test:watch": "vitest",
     "cap:sync": "npx cap sync ios",
     "cap:open:ios": "npx cap open ios",
-    "ios:setup": "npm run build && npx cap sync ios"
+    "ios:setup": "npm run build && npx cap sync ios",
+    "ios:bundle": "bash scripts/build-ios-bundle.sh"
   },
   "dependencies": {
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/geolocation": "^8.2.0",
     "@capacitor/ios": "^8.3.4",
+    "@capacitor/splash-screen": "^8.0.1",
     "@upstash/redis": "^1.35.4",
     "mapbox-gl": "^3.3.0",
     "next": "^16.1.6",

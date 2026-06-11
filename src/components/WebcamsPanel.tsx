@@ -2,6 +2,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { apiFetch } from "@/lib/apiFetch";
 
 export type WebcamItem = {
   id?: string | number;
@@ -51,7 +52,7 @@ export default function WebcamsPanel({
     let cancelled = false;
     setLoading(true);
     setErr(null);
-    fetch(url, { cache: "no-store" })
+    apiFetch(url)
       .then(async (r) => {
         if (!r.ok) throw new Error(`${r.status}`);
         const j = (await r.json()) as { items?: WebcamItem[] };

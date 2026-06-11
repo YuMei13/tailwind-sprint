@@ -1,3 +1,5 @@
+import { apiFetch } from "@/lib/apiFetch";
+
 export type LonLat = [number, number];
 
 export type ManagedStop = {
@@ -192,11 +194,10 @@ export async function fetchManagedMultiStopRoute(
     throw new Error(reason ?? "Unable to compute route for current stops.");
   }
 
-  const response = await fetch("/api/mapbox-route", {
+  const response = await apiFetch("/api/mapbox-route", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ coordinates, profile: "cycling" }),
-    cache: "no-store",
     ...init,
   });
 
