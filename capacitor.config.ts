@@ -18,6 +18,17 @@ const config: CapacitorConfig = {
   ios: {
     contentInset: "always",
   },
+  plugins: {
+    // Hold the native launch screen (the .jpg logo on #FEFEFE) on screen long
+    // enough to cover the bundle's JS load/hydration, so the user sees the
+    // splash instead of a blank flash before the map appears.
+    SplashScreen: {
+      launchShowDuration: 2500,
+      launchAutoHide: true,
+      backgroundColor: "#FEFEFE",
+      showSpinner: false,
+    },
+  },
 };
 
 export default config;
