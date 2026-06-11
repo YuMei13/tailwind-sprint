@@ -204,24 +204,21 @@ export default function ElevationPanel({
   }, [ready, externalHoverIndex, series.mapIdx]);
 
   const displayHoverIdx = hoverX != null ? hoverIdx : (externalHoverInnerIdx ?? hoverIdx);
-  const hoverTiltDeg = useMemo(() => {
-    if (!ready || displayHoverIdx == null) return 0;
-    const i0 = Math.max(0, displayHoverIdx - 1);
-    const i1 = Math.min(series.dist.length - 1, displayHoverIdx + 1);
+  // The rider sits at the hovered point, or the selected/focus point when not hovering.
+  const riderInnerIdx = displayHoverIdx ?? selectedInnerIdx;
+  // Tilt the rider to sit exactly tangent to the drawn elevation curve at its
+  // position — the true on-screen slope, with no exaggeration or clamping.
+  const riderTiltDeg = useMemo(() => {
+    if (!ready || riderInnerIdx == null) return 0;
+    const i0 = Math.max(0, riderInnerIdx - 1);
+    const i1 = Math.min(series.dist.length - 1, riderInnerIdx + 1);
     if (i0 === i1) return 0;
-
-    // Use on-screen tangent so rotation always matches the displayed elevation profile.
     const dx = x(series.dist[i1]) - x(series.dist[i0]);
     const dy = y(series.elev[i1]) - y(series.elev[i0]);
     if (!Number.isFinite(dx) || Math.abs(dx) < 1e-6 || !Number.isFinite(dy)) return 0;
-
-    // In SVG/screen coordinates, positive angle rotates clockwise.
-    // Convert tangent to a very obvious rider tilt with a minimum visible angle.
-    const tangentDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-    const sign = tangentDeg === 0 ? 0 : tangentDeg > 0 ? 1 : -1;
-    const magnitude = Math.min(32, Math.max(8, Math.abs(tangentDeg) * 1.6));
-    return sign * magnitude;
-  }, [displayHoverIdx, ready, series.dist, series.elev, x, y]);
+    // SVG y grows downward, so atan2(dy, dx) is already the clockwise screen angle.
+    return (Math.atan2(dy, dx) * 180) / Math.PI;
+  }, [riderInnerIdx, ready, series.dist, series.elev, x, y]);
 
   const km = (series.total / 1000).toFixed(2);
   const minStr = series.min.toFixed(0);
@@ -373,7 +370,7 @@ export default function ElevationPanel({
               stroke="#6366f1"
               strokeDasharray="4 3"
             />
-            <g transform={`translate(${x(series.dist[(displayHoverIdx ?? selectedInnerIdx) as number])}, ${y(series.elev[(displayHoverIdx ?? selectedInnerIdx) as number])}) rotate(${displayHoverIdx != null ? hoverTiltDeg : 0})`}>
+            <g transform={`translate(${x(series.dist[riderInnerIdx as number])}, ${y(series.elev[riderInnerIdx as number])}) rotate(${riderTiltDeg})`}>
               <image href="/bmx.png" x="-15" y="-15" width="30" height="30" />
             </g>
             </>
