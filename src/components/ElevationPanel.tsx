@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { haversine } from "@/lib/geo";
+import { ui, glassSurface } from "@/lib/ui";
 
 export type ElevPt = { lat: number; lon: number; elevation?: number; error?: true };
 
@@ -229,12 +230,10 @@ export default function ElevationPanel({
     <div
       ref={containerRef}
       style={{
-        background: "rgba(255,255,255,0.95)",
-        borderRadius: 8,
-        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        padding: compact ? 10 : 16,
+        ...glassSurface,
+        padding: compact ? 12 : 16,
         fontSize: 12,
-        color: "#1e293b",
+        color: ui.ink,
       }}
       onMouseLeave={() => {
         setHoverX(null);
@@ -243,7 +242,7 @@ export default function ElevationPanel({
         onLeave?.();
       }}
     >
-      <div style={{ fontWeight: 700, marginBottom: compact ? 4 : 6 }}>Elevation (m)</div>
+      <div style={{ ...ui.sectionLabel, marginBottom: compact ? 6 : 8 }}>Elevation · m</div>
 
       {ready ? (
         <svg
@@ -380,11 +379,18 @@ export default function ElevationPanel({
         <div style={{ textAlign: "center", color: "#64748b" }}>No elevation data</div>
       )}
 
-      <div style={{ display: "flex", gap: compact ? 8 : 12, marginTop: compact ? 4 : 6, flexWrap: "wrap" }}>
-        <span>Min: {minStr} m</span>
-        <span>Max: {maxStr} m</span>
-        <span>Gain: {(series.max - series.min).toFixed(0)} m</span>
-        <span>Dist: {km} km</span>
+      <div style={{ display: "flex", gap: compact ? 14 : 20, marginTop: compact ? 8 : 10, flexWrap: "wrap" }}>
+        {[
+          ["Min", `${minStr} m`],
+          ["Max", `${maxStr} m`],
+          ["Gain", `${(series.max - series.min).toFixed(0)} m`],
+          ["Dist", `${km} km`],
+        ].map(([label, value]) => (
+          <span key={label} style={{ display: "inline-flex", alignItems: "baseline", gap: 5 }}>
+            <span style={{ ...ui.sectionLabel }}>{label}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: ui.ink }}>{value}</span>
+          </span>
+        ))}
       </div>
     </div>
   );
