@@ -205,29 +205,41 @@ export async function POST(req: NextRequest) {
       86400,
       async () => {
         const batchSize = 60;
-        const allPts: ElevPt[] = [];
+        const chunks: LonLat[][] = [];
         for (let i = 0; i < samples.length; i += batchSize) {
-          const chunk = samples.slice(i, i + batchSize);
+          chunks.push(samples.slice(i, i + batchSize));
+        }
+
+        const fetchChunk = async (chunk: LonLat[]): Promise<ElevPt[]> => {
           try {
-            const part = await fetchElevBatch(chunk, dataset, 20000);
-            allPts.push(...part);
+            return await fetchElevBatch(chunk, dataset, 20000);
           } catch {
             try {
-              const part = await fetchElevBatchFallback(chunk, 20000);
-              allPts.push(...part);
+              return await fetchElevBatchFallback(chunk, 20000);
             } catch {
               try {
-                const part = await fetchElevBatchMapbox(chunk, 20000);
-                allPts.push(...part);
+                return await fetchElevBatchMapbox(chunk, 20000);
               } catch {
-                for (const [lon, lat] of chunk) {
-                  allPts.push({ lat, lon, error: true, msg: "elev fetch failed" });
-                }
+                return chunk.map(([lon, lat]) => ({ lat, lon, error: true as const, msg: "elev fetch failed" }));
               }
             }
           }
-        }
-        return { points: allPts };
+        };
+
+        // Run chunks in parallel (bounded) instead of sequentially, preserving order.
+        const CONCURRENCY = 8;
+        const parts: ElevPt[][] = new Array(chunks.length);
+        let next = 0;
+        await Promise.all(
+          Array.from({ length: Math.max(1, Math.min(CONCURRENCY, chunks.length)) }, async () => {
+            while (true) {
+              const i = next++;
+              if (i >= chunks.length) return;
+              parts[i] = await fetchChunk(chunks[i]);
+            }
+          })
+        );
+        return { points: parts.flat() };
       },
       nocache,
       (payload) => payload.points.some((p) => typeof p.elevation === "number")
