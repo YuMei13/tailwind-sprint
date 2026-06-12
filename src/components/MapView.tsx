@@ -130,14 +130,14 @@ export default function MapView() {
     padding: 0,
   };
   const panelCardStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.94)",
-    color: "#1e293b",
-    borderRadius: 14,
-    border: "1px solid rgba(148,163,184,0.28)",
-    boxShadow: "0 14px 40px rgba(15,23,42,0.2)",
-    padding: 10,
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
+    background: ui.surface,
+    color: ui.ink,
+    borderRadius: ui.radius,
+    border: ui.border,
+    boxShadow: `${ui.shadow}, ${ui.ring}`,
+    padding: 14,
+    backdropFilter: ui.blur,
+    WebkitBackdropFilter: ui.blur,
   };
   const panelHeaderStyle: React.CSSProperties = {
     display: "flex",
@@ -1863,8 +1863,8 @@ export default function MapView() {
               padding: isPhone ? "10px 12px" : panelCardStyle.padding,
             }}
           >
-            <div style={{ ...panelHeaderStyle, marginBottom: 8 }}>
-              <span style={{ fontWeight: 700 }}>Route Planner</span>
+            <div style={{ ...panelHeaderStyle, marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em", color: ui.ink }}>Route Planner</span>
               <button onClick={() => setShowRoutingPanel(false)} style={closeButtonStyle} aria-label="Close routing panel">
                 ✖
               </button>
