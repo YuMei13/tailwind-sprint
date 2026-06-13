@@ -9,6 +9,9 @@ const ONBOARDED_KEY = "soonla.onboarded.v1";
 
 export default function HomePage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // Whether we've checked localStorage yet — gates the location request so it
+  // never fires before we know if onboarding should show.
+  const [onboardingDecided, setOnboardingDecided] = useState(false);
 
   useEffect(() => {
     try {
@@ -16,6 +19,7 @@ export default function HomePage() {
     } catch {
       // localStorage unavailable — skip onboarding rather than block the app.
     }
+    setOnboardingDecided(true);
   }, []);
 
   const dismissOnboarding = () => {
@@ -29,7 +33,8 @@ export default function HomePage() {
 
   return (
     <main style={{ height: "100dvh", width: "100%" }}>
-      <MapView />
+      {/* Ask for location only after the welcome is dismissed (or skipped). */}
+      <MapView locationEnabled={onboardingDecided && !showOnboarding} />
       {showOnboarding && <Onboarding onDismiss={dismissOnboarding} />}
     </main>
   );

@@ -113,7 +113,7 @@ function MapInteraction({
   return null;
 }
 
-export default function MapView() {
+export default function MapView({ locationEnabled = true }: { locationEnabled?: boolean }) {
   const closeButtonStyle: React.CSSProperties = {
     width: 22,
     height: 22,
@@ -335,6 +335,9 @@ export default function MapView() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Hold the location request until onboarding is dismissed, so the welcome
+    // shows before the system permission prompt on first launch.
+    if (!locationEnabled) return;
     let cancelled = false;
     (async () => {
       try {
@@ -364,7 +367,7 @@ export default function MapView() {
     return () => {
       cancelled = true;
     };
-  }, [tryFlyToPendingGeoCenter]);
+  }, [tryFlyToPendingGeoCenter, locationEnabled]);
 
   const loadCachedPresetRoute = (presetId: string): LonLat[] | null => {
     const mem = routeCacheRef.current.get(presetId);
