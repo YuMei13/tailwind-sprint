@@ -31,18 +31,28 @@ export default function ElevationPanel({
     const el = containerRef.current;
     if (!el) return;
 
-    const update = () => {
-      const next = Math.max(220, Math.floor(el.clientWidth - 20));
-      setChartWidth(next);
-    };
-    update();
+    const apply = (w: number) => setChartWidth(Math.max(220, Math.floor(w)));
 
     if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver(() => update());
+      // Size the chart to the panel's content box (padding excluded). Guessing
+      // the padding (e.g. clientWidth - 20) can leave the SVG a few px too wide;
+      // it then overflows and grows the panel, which re-fires the observer in an
+      // infinite loop ("Maximum update depth exceeded"). contentRect is exact,
+      // so the SVG always fits and the width settles.
+      const ro = new ResizeObserver((entries) => {
+        const cr = entries[0]?.contentRect;
+        if (cr && cr.width > 0) apply(cr.width);
+      });
       ro.observe(el);
       return () => ro.disconnect();
     }
 
+    const update = () => {
+      const cs = getComputedStyle(el);
+      const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+      apply(el.clientWidth - padX);
+    };
+    update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
