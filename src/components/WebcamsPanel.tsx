@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { apiFetch } from "@/lib/apiFetch";
+import { ui, glassSurface } from "@/lib/ui";
 
 export type WebcamItem = {
   id?: string | number;
@@ -82,15 +83,22 @@ export default function WebcamsPanel({
   };
 
   return (
-    <div style={{ width: 360, background: "rgba(255,255,255,0.98)", border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, boxShadow: "0 6px 16px rgba(0,0,0,0.15)", zIndex: 1400 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <div style={{ fontWeight: 700 }}>Nearby webcams</div>
+    <div style={{ ...glassSurface, width: 360, maxWidth: "100%", padding: 14, color: ui.ink, zIndex: 1400 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em" }}>Nearby webcams</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 12 }}>Radius</span>
+          <span style={{ ...ui.sectionLabel }}>Radius</span>
           <select
             value={radiusKm}
             onChange={(e) => setRadiusKm(Number(e.target.value) || 20)}
-            style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid #d1d5db" }}
+            style={{
+              padding: "4px 8px",
+              borderRadius: ui.radiusSm,
+              border: `0.5px solid ${ui.hairline}`,
+              background: "rgba(255,255,255,0.6)",
+              color: ui.ink,
+              fontSize: 12,
+            }}
           >
             <option value={10}>10 km</option>
             <option value={20}>20 km</option>
@@ -99,18 +107,18 @@ export default function WebcamsPanel({
         </div>
       </div>
 
-      {loading && <div style={{ color: "#6b7280", fontSize: 13 }}>Loading…</div>}
+      {loading && <div style={{ color: ui.muted, fontSize: 13 }}>Loading…</div>}
       {err && <div style={{ color: "#dc2626", fontSize: 13 }}>Error: {err}</div>}
-      {!loading && !err && items.length === 0 && <div style={{ color: "#6b7280", fontSize: 13 }}>No webcams nearby</div>}
+      {!loading && !err && items.length === 0 && <div style={{ color: ui.muted, fontSize: 13 }}>No webcams nearby</div>}
 
-      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflow: "auto" }}>
+      <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 12, maxHeight: 280, overflow: "auto" }}>
         {items.map((w, idx) => {
           const img = imgOf(w);
           const showImg = img && canShowImage(img);
           const labelNum = idx + 1;
           return (
-            <div key={`${w.id ?? `${w.lat},${w.lon}`}`} style={{ display: "flex", gap: 8, borderBottom: "1px solid #f1f5f9", paddingBottom: 8 }}>
-              <div style={{ width: 96, height: 64, borderRadius: 6, overflow: "hidden", background: "#f1f5f9", flex: "0 0 auto", position: "relative" }}>
+            <div key={`${w.id ?? `${w.lat},${w.lon}`}`} style={{ display: "flex", gap: 10, paddingBottom: 12, borderBottom: `0.5px solid ${ui.hairline}` }}>
+              <div style={{ width: 96, height: 64, borderRadius: 10, overflow: "hidden", background: "rgba(60,60,67,0.06)", flex: "0 0 auto", position: "relative" }}>
                 {showImg ? (
                   <Image
                     src={img}
@@ -131,7 +139,7 @@ export default function WebcamsPanel({
                     minWidth: 20,
                     height: 20,
                     borderRadius: 999,
-                    background: "rgba(2,132,199,0.95)",
+                    background: ui.accent,
                     color: "#fff",
                     border: "1px solid rgba(255,255,255,0.9)",
                     boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
@@ -147,20 +155,29 @@ export default function WebcamsPanel({
                 </div>
               </div>
               <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-                <div style={{ fontWeight: 600, lineHeight: 1.2 }}>{labelNum}. {w.title || "Webcam"}</div>
-                <div style={{ color: "#6b7280", fontSize: 12, marginTop: 2 }}>
+                <div style={{ fontWeight: 600, lineHeight: 1.25, color: ui.ink }}>{labelNum}. {w.title || "Webcam"}</div>
+                <div style={{ color: ui.inkSecondary, fontSize: 12, marginTop: 2 }}>
                   {w.city || w.region || w.country || "—"}
                 </div>
-                <div style={{ color: "#64748b", fontSize: 11, marginTop: 4 }}>{(w.distance / 1000).toFixed(1)} km away</div>
-                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                <div style={{ color: ui.muted, fontSize: 11.5, marginTop: 4 }}>{(w.distance / 1000).toFixed(1)} km away</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
                   <button
                     onClick={() => onPick(w.lat, w.lon)}
-                    style={{ fontSize: 12, color: "#1e293b",padding: "4px 8px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff" }}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: ui.accent,
+                      padding: "5px 12px",
+                      borderRadius: ui.radiusPill,
+                      border: "none",
+                      background: ui.accentSoft,
+                      cursor: "pointer",
+                    }}
                   >
                     Fly to
                   </button>
-                  <a href={w.detailUrl} target="_blank" rel="noreferrer" style={{ color: "#2563eb", fontSize: 13 }}>
-                    Watch live/source
+                  <a href={w.detailUrl} target="_blank" rel="noreferrer" style={{ color: ui.accent, fontSize: 12.5, fontWeight: 500 }}>
+                    Watch live
                   </a>
                 </div>
               </div>

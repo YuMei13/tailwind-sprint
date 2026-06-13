@@ -12,6 +12,7 @@ import ElevationPanel, { ElevPt } from "@/components/ElevationPanel";
 import MapboxRoutingPanel, { type Role as RoutingPanelRole } from "@/components/MapboxRoutingPanel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Geolocation } from "@capacitor/geolocation";
+import { ui } from "@/lib/ui";
 import type {
   LineLatLng,
   LonLat,
@@ -113,19 +114,6 @@ function MapInteraction({
 }
 
 export default function MapView() {
-  const toggleButtonStyle: React.CSSProperties = {
-    fontSize: 12,
-    fontWeight: 700,
-    padding: "8px 12px",
-    background: "rgba(248,250,252,0.94)",
-    color: "#0f172a",
-    border: "1px solid rgba(148,163,184,0.45)",
-    borderRadius: 999,
-    cursor: "pointer",
-    boxShadow: "0 8px 24px rgba(2,6,23,0.16)",
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
-  };
   const closeButtonStyle: React.CSSProperties = {
     width: 22,
     height: 22,
@@ -142,14 +130,14 @@ export default function MapView() {
     padding: 0,
   };
   const panelCardStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.94)",
-    color: "#1e293b",
-    borderRadius: 14,
-    border: "1px solid rgba(148,163,184,0.28)",
-    boxShadow: "0 14px 40px rgba(15,23,42,0.2)",
-    padding: 10,
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
+    background: ui.surface,
+    color: ui.ink,
+    borderRadius: ui.radius,
+    border: ui.border,
+    boxShadow: `${ui.shadow}, ${ui.ring}`,
+    padding: 14,
+    backdropFilter: ui.blur,
+    WebkitBackdropFilter: ui.blur,
   };
   const panelHeaderStyle: React.CSSProperties = {
     display: "flex",
@@ -280,18 +268,22 @@ export default function MapView() {
   const isPhone = viewportWidth < 768;
   const isTablet = viewportWidth >= 768 && viewportWidth < 1200;
   const panelIconButtonStyle = (active: boolean): React.CSSProperties => ({
-    ...toggleButtonStyle,
-    width: 42,
-    height: 42,
-    minWidth: 42,
+    width: 44,
+    height: 44,
+    minWidth: 44,
     padding: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: active ? "rgba(234,179,8,0.92)" : "rgba(248,250,252,0.94)",
-    color: active ? "#111827" : "#0f172a",
-    border: active ? "1px solid rgba(161,98,7,0.45)" : toggleButtonStyle.border,
     borderRadius: 999,
+    cursor: "pointer",
+    border: ui.border,
+    background: active ? ui.accent : ui.surface,
+    backdropFilter: ui.blur,
+    WebkitBackdropFilter: ui.blur,
+    color: active ? "#ffffff" : ui.ink,
+    boxShadow: active ? "0 6px 18px rgba(31,58,95,0.35)" : `${ui.shadowSm}, ${ui.ring}`,
+    transition: "background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease",
   });
 
   const setProgrammaticCenter = useCallback(
@@ -1871,8 +1863,8 @@ export default function MapView() {
               padding: isPhone ? "10px 12px" : panelCardStyle.padding,
             }}
           >
-            <div style={{ ...panelHeaderStyle, marginBottom: 8 }}>
-              <span style={{ fontWeight: 700 }}>Route Planner</span>
+            <div style={{ ...panelHeaderStyle, marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em", color: ui.ink }}>Route Planner</span>
               <button onClick={() => setShowRoutingPanel(false)} style={closeButtonStyle} aria-label="Close routing panel">
                 ✖
               </button>

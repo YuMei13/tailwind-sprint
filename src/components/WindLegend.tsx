@@ -1,6 +1,7 @@
 "use client";
 import { ROUTE_WIND_ANGLE_BINS, WIND_BINS_MS } from "@/lib/wind";
 import { getArrowIcon } from "@/lib/windIcons";
+import { ui, glassSurface } from "@/lib/ui";
 
 type Props = {
   mode?: "wind" | "slope";
@@ -19,7 +20,7 @@ const SLOPE_BINS = [
 
 export default function WindLegend({ mode = "wind", onToggleMode, windAngleRatio }: Props) {
   const routeBins = (mode === "slope" ? SLOPE_BINS : ROUTE_WIND_ANGLE_BINS).slice().reverse();
-  const routeTitle = mode === "slope" ? "Route Slope" : "Route vs Wind Angle";
+  const routeTitle = mode === "slope" ? "Route slope" : "Route vs wind";
   const windSpeedBins = WIND_BINS_MS.slice().reverse();
   const speedSampleMs = (max: number) => (Number.isFinite(max) ? Math.max(0.8, max - 0.2) : 12);
   const showRatio = mode === "wind" && windAngleRatio && windAngleRatio.total > 0;
@@ -32,12 +33,11 @@ export default function WindLegend({ mode = "wind", onToggleMode, windAngleRatio
   return (
     <div
       style={{
-        background: "rgba(255,255,255,0.95)",
-        borderRadius: 8,
-        boxShadow: "0 4px 12px rgba(0,0,0,0.14)",
-        padding: "9px 10px",
-        fontSize: 12,
-        lineHeight: 1.2,
+        ...glassSurface,
+        padding: 14,
+        fontSize: 13,
+        lineHeight: 1.25,
+        color: ui.ink,
         width: "100%",
         maxWidth: "100%",
       }}
@@ -47,88 +47,84 @@ export default function WindLegend({ mode = "wind", onToggleMode, windAngleRatio
         onClick={onToggleMode}
         style={{
           width: "100%",
-          padding: "6px 8px",
-          marginBottom: 7,
-          borderRadius: 5,
-          border: "1px solid #cbd5e1",
-          background: "#f8fafc",
-          color: "#0f172a",
-          fontSize: 12,
-          fontWeight: 700,
+          padding: "8px 10px",
+          marginBottom: 12,
+          borderRadius: ui.radiusSm,
+          border: "none",
+          background: ui.accentSoft,
+          color: ui.accent,
+          fontSize: 12.5,
+          fontWeight: 600,
+          letterSpacing: "-0.01em",
           cursor: "pointer",
         }}
       >
-        {mode === "wind" ? "Switch to Slope" : "Switch to Wind Angle"}
+        {mode === "wind" ? "Show slope" : "Show wind angle"}
       </button>
-      <div style={{ fontSize: 12, color: "#1e293b", fontWeight: 700, marginBottom: showRatio ? 4 : 5 }}>
-        {routeTitle}
-      </div>
+
+      <div style={{ ...ui.sectionLabel, marginBottom: showRatio ? 8 : 9 }}>{routeTitle}</div>
+
       {showRatio && (
-        <div style={{ marginBottom: 6 }}>
+        <div style={{ marginBottom: 12 }}>
           <div
             style={{
               display: "flex",
-              height: 8,
-              borderRadius: 999,
+              height: 6,
+              borderRadius: ui.radiusPill,
               overflow: "hidden",
-              background: "#e2e8f0",
-              marginBottom: 4,
+              background: ui.hairline,
+              marginBottom: 6,
             }}
           >
             <span style={{ width: `${samePct}%`, background: "#2563eb" }} />
             <span style={{ width: `${crossPct}%`, background: "#f97316" }} />
             <span style={{ width: `${oppositePct}%`, background: "#ef4444" }} />
           </div>
-          <div style={{ fontSize: 11, color: "#475569" }}>
-            Same-ish {pctLabel(samePct)} · Crosswind {pctLabel(crossPct)} · Opposite {pctLabel(oppositePct)}
+          <div style={{ fontSize: 11.5, color: ui.muted }}>
+            Tailwind {pctLabel(samePct)} · Cross {pctLabel(crossPct)} · Head {pctLabel(oppositePct)}
           </div>
         </div>
       )}
-      {routeBins.map((b, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", margin: "3px 0" }}>
-          <span
-            style={{
-              display: "inline-block",
-              width: 14,
-              height: 9,
-              borderRadius: 3,
-              background: b.color,
-              marginRight: 6,
-            }}
-          />
-          <span>{b.label}</span>
-        </div>
-      ))}
 
-      <div
-        style={{
-          height: 1,
-          background: "#e2e8f0",
-          margin: "7px 0",
-        }}
-      />
-
-      <div style={{ fontSize: 12, color: "#1e293b", fontWeight: 700, marginBottom: 5 }}>
-        Wind Speed (m/s)
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        {routeBins.map((b, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <span
+              style={{
+                display: "inline-block",
+                width: 16,
+                height: 10,
+                borderRadius: 3,
+                background: b.color,
+                flex: "0 0 auto",
+              }}
+            />
+            <span style={{ color: ui.inkSecondary }}>{b.label}</span>
+          </div>
+        ))}
       </div>
-      {windSpeedBins.map((b, i) => (
-        <div key={`speed-${i}`} style={{ display: "flex", alignItems: "center", margin: "3px 0" }}>
-          <span
-            style={{
-              display: "inline-flex",
-              width: 28,
-              height: 20,
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: 6,
-            }}
-            dangerouslySetInnerHTML={{
-              __html: getArrowIcon(90, speedSampleMs(b.max), 17),
-            }}
-          />
-          <span>{b.label}</span>
-        </div>
-      ))}
+
+      <div style={{ height: 0.5, background: ui.hairline, margin: "12px 0" }} />
+
+      <div style={{ ...ui.sectionLabel, marginBottom: 9 }}>Wind speed · m/s</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        {windSpeedBins.map((b, i) => (
+          <div key={`speed-${i}`} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <span
+              style={{
+                display: "inline-flex",
+                width: 28,
+                height: 20,
+                alignItems: "center",
+                justifyContent: "center",
+                flex: "0 0 auto",
+              }}
+              dangerouslySetInnerHTML={{ __html: getArrowIcon(90, speedSampleMs(b.max), 17) }}
+            />
+            <span style={{ color: ui.inkSecondary }}>{b.label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
