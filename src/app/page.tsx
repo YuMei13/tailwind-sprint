@@ -12,9 +12,17 @@ export default function HomePage() {
   // Whether we've checked localStorage yet — gates the location request so it
   // never fires before we know if onboarding should show.
   const [onboardingDecided, setOnboardingDecided] = useState(false);
+  // Suppress the location request entirely (e.g. ?nolocate=1 for screenshots).
+  const [noLocate, setNoLocate] = useState(false);
 
   useEffect(() => {
     try {
+      // Allow deep links to skip onboarding (e.g. ?onboarded=1), useful for
+      // shared route links and screenshots.
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("nolocate") === "1") setNoLocate(true);
+      const skip = params.get("onboarded") === "1";
+      if (skip) window.localStorage.setItem(ONBOARDED_KEY, "1");
       if (!window.localStorage.getItem(ONBOARDED_KEY)) setShowOnboarding(true);
     } catch {
       // localStorage unavailable — skip onboarding rather than block the app.
@@ -34,7 +42,7 @@ export default function HomePage() {
   return (
     <main style={{ height: "100dvh", width: "100%" }}>
       {/* Ask for location only after the welcome is dismissed (or skipped). */}
-      <MapView locationEnabled={onboardingDecided && !showOnboarding} />
+      <MapView locationEnabled={onboardingDecided && !showOnboarding && !noLocate} />
       {showOnboarding && <Onboarding onDismiss={dismissOnboarding} />}
     </main>
   );
