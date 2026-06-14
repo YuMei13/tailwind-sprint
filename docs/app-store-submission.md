@@ -110,11 +110,9 @@ in-app.
 5. Upload the screenshots from Phase 4.
 
 ### Hosting the privacy policy
-You need a public URL. Quickest options:
-- **GitHub Pages:** enable Pages on the repo, the markdown renders at a public
-  URL, paste that.
-- **Or** add a `/privacy` route to your web app that renders the policy, and use
-  `https://YOUR-VERCEL-URL/privacy`.
+The app already ships a **`/privacy` page**, so once you deploy your backend
+(Phase 2) the policy is live at **`https://YOUR-VERCEL-URL/privacy`** — paste
+that URL into App Store Connect. No GitHub Pages needed.
 
 ---
 
